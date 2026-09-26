@@ -18,9 +18,10 @@ export function ConciergePage() {
   const profile = useStore(s => s.profile); const setContact = useStore(s => s.setContact);
   const selection = useStore(s => s.selection); const clearSelection = useStore(s => s.clearSelection);
   const prepare = useStore(s => s.prepare);
-  const started = messages.length > 1 || Boolean(results);
+  const hasResults = Boolean(results);
+  const conversational = messages.length > 1;
 
-  if (!started) return <div className="intro-stage">
+  if (!conversational && !hasResults) return <div className="intro-stage">
     <motion.div className="intro-inner" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}>
       <Pearl size={72} />
       <h1 className="intro-title">Good evening.<br />What are you in the mood for?</h1>
@@ -28,6 +29,14 @@ export function ConciergePage() {
       <Composer large />
       <div className="intro-examples">{examples.map(x => <button key={x} className="example" onClick={() => { setDraft(x); void send(x); }}>{x}</button>)}</div>
     </motion.div>
+  </div>;
+
+  if (!hasResults) return <div className="chat-center">
+    <div className="chat-column">
+      <Conversation />
+      <IntentBar />
+      <Composer />
+    </div>
   </div>;
 
   return <div className="stage">
