@@ -94,7 +94,7 @@ export class BookingJobs {
     entry.timers.push(setTimeout(() => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'TIMEOUT', message: 'The booking browser did not finish preparing within 2 minutes. Nothing was submitted.' }); }, this.options.prepareTimeoutMs ?? 120_000));
     void entry.booker.prepare({ ...request, timezone: venue.timezone }).then(prepared => {
       if (job.state !== 'PREPARING') return;
-      if (prepared.status !== 'READY') { void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }, prepared.screenshot); return; }
+      if (prepared.status !== 'READY') { const noShot = ['CANCELLATION_FEE', 'PAYMENT_REQUIRED'].includes(prepared.code); void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }, noShot ? undefined : prepared.screenshot); return; }
       const holdMs = Math.max(this.options.minHoldMs ?? 30_000, (prepared.holdSeconds ?? 300) * 1000 - (this.options.holdMarginMs ?? 20_000));
       job.prepared = { policy: prepared.policy, values: prepared.values, holdExpiresAt: new Date(this.now().getTime() + holdMs).toISOString() };
       for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];

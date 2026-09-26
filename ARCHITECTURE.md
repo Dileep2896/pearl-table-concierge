@@ -2,21 +2,24 @@
 
 All diagrams are Mermaid and render on GitHub. The same sources are rendered to images for the presentation.
 
+The frontend is a Vite + React sidebar shell (Concierge, Reservations, Settings) with a typed Zustand store holding chat, the booking job and its polling, the profile, saved bookings and the theme; UI is split into `web/ui` primitives and `web/features/*`. Motion is Framer Motion.
+
 ## 1. System overview
 
 ```mermaid
 flowchart LR
-  D([Diner]) --> UI[React web page<br/>Vite · port 5180]
-  UI -->|/api| API[Hono API<br/>routing · errors · request log]
+  D([Diner]) --> UI[React app · Vite<br/>sidebar shell: Concierge · Reservations · Settings]
+  UI --- ST[Zustand store<br/>chat · booking job · profile · theme]
+  ST -->|/api| API[Hono API<br/>routing · errors · request log]
   API --> CH[Chat<br/>parser first, Codex when available]
   CH --> CQ[Codex queue<br/>serialised · 5 min cache]
   CQ --> CX[(Codex CLI<br/>local, no API key)]
-  API --> AV[Availability service<br/>20 s cache · 6 in flight]
+  API --> AV[Availability service<br/>20 s cache · concurrency cap · nearby fallback]
   AV -->|GET widget/range| SR[(SevenRooms<br/>public widget)]
   API --> JB[Booking jobs<br/>state machine · timers · retention]
   JB --> BK[Booking driver<br/>prepare / confirm]
   BK --> BP[Browser pool<br/>one Chromium, a context per booking]
-  BP -->|drives the guest checkout| SR
+  BP -->|guest checkout + reCAPTCHA| SR
   JB --> LG[(Bookings ledger<br/>.local/bookings.json)]
   API --> PF[(Local profile<br/>.local/profile.json)]
   API --> VN[(Curated venues<br/>21 slugs, NY + SF)]
@@ -76,17 +79,18 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-  M[Diner message] --> P[Deterministic parser<br/>chrono-node · patterns · aliases]
+  M[Diner message<br/>or tapped quick reply] --> P[Parser<br/>chrono-node · patterns · aliases]
   P --> C{Codex on?}
+  C -->|yes| X[Codex CLI<br/>strict JSON] --> MG[Merge over parser<br/>validate with Zod]
   C -->|no| V
-  C -->|yes| X[Codex CLI<br/>strict JSON schema]
-  X --> MG[Merge over parser<br/>validate with Zod]
   MG --> V{All fields known?<br/>area · date · window · party}
   MG -.->|model fails or junk| V
-  V -->|missing| Q[Ask for exactly what is missing]
-  V -->|unsupported place| R[Refuse with coverage list]
-  V -->|ready| F[Availability<br/>one GET per venue]
-  F --> S[Reply + open times<br/>closest pick per venue when one time was named]
+  V -->|missing| Q[Ask + show quick-reply chips<br/>area · day · time · guests]
+  V -->|unsupported place| R[Refuse with the covered areas]
+  V -->|ready| F[Availability fan-out]
+  F --> B{Bookable tables?}
+  B -->|yes| S[Show open times<br/>closest pick per venue]
+  B -->|no| N[Search the rest of the city<br/>name nearby bookable places]
 ```
 
 ## 5. Guardrails at the checkout

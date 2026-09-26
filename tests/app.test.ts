@@ -76,18 +76,29 @@ describe('booking API', () => {
       expect((await post(h.app, `/api/book/${b.id}/confirm`)).status).toBe(409);
     } finally { await h.cleanup(); }
   });
-  it('fails the job with evidence when preparation stops, and never confirms', async () => {
-    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'CANCELLATION_FEE', message: 'fee', screenshot: Buffer.from('png-bytes') } });
+  it('fails the job with a page screenshot when the widget rejects it, and never confirms', async () => {
+    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'NO_CHECKOUT', message: 'no checkout', screenshot: Buffer.from('png-bytes') } });
     const h = await harness(() => booker);
     try {
       const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
       await wait(30);
       const current = await jobOf(h.app, job.id);
-      expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('CANCELLATION_FEE'); expect(current.result?.hasEvidence).toBe(true);
+      expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('NO_CHECKOUT'); expect(current.result?.hasEvidence).toBe(true);
       const image = await h.app.request(`/api/book/${job.id}/evidence.png`);
       expect(image.status).toBe(200); expect(image.headers.get('content-type')).toBe('image/png'); expect(Buffer.from(await image.arrayBuffer()).toString()).toBe('png-bytes');
       expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(409);
       expect((await (await h.app.request('/api/bookings')).json() as { bookings: unknown[] }).bookings).toEqual([]);
+    } finally { await h.cleanup(); }
+  });
+  it('does not keep a screenshot for a fee stop — the quoted policy is the evidence', async () => {
+    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'CANCELLATION_FEE', message: 'fee: $50 per person on the card on file', policy: '$50 per person will be charged to the card on file', screenshot: Buffer.from('masked-form') } });
+    const h = await harness(() => booker);
+    try {
+      const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30);
+      const current = await jobOf(h.app, job.id);
+      expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('CANCELLATION_FEE'); expect(current.result?.hasEvidence).toBe(false);
+      expect((await h.app.request(`/api/book/${job.id}/evidence.png`)).status).toBe(404);
     } finally { await h.cleanup(); }
   });
   it('expires a hold that is not confirmed in time, and sweeps finished jobs after retention', async () => {

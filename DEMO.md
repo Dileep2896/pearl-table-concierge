@@ -12,6 +12,10 @@ A web chat where a diner types a request in plain language, sees every open tabl
 
 **Platform: SevenRooms.** Its public reservation widget exposes availability with no key, no login and no bot wall, and its guest checkout can be driven by a headless browser exactly as a person would. Nothing in the pipeline is paid.
 
+**What the diner does not have to do**
+
+Type much. One loose sentence plus a few taps reaches results: the concierge asks for whatever is missing as chips, remembers the profile so the contact form is pre-filled, and picks the closest table itself when a single time is named. A search that comes up dry offers nearby places by name rather than a dead end.
+
 **Flow, end to end**
 
 1. **Understand.** The message goes through a deterministic parser (dates, time windows, party size, neighbourhood). When Codex is available it also goes to the model for a natural reply and looser phrasing; the model's answer is validated and merged over the parser's, so a bad model answer can never break a turn.

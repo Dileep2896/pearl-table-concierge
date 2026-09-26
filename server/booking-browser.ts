@@ -86,7 +86,7 @@ export class SevenRoomsBooker {
       if (await this.asksForCard(page)) throw new BookingFailure('PAYMENT_REQUIRED', 'This restaurant asks for a card at checkout. Pearl does not enter payment details.');
       if (await page.locator('input[type="password"]').filter({ visible: true }).count() > 0) throw new BookingFailure('LOGIN_REQUIRED', 'This restaurant requires a SevenRooms login. Pearl stopped.');
       ({ text: session.policy, screenshot: session.policyShot } = await this.readPolicy(page));
-      if (this.options.requireFreeCancellation !== false && session.policy && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy)) throw new BookingFailure('CANCELLATION_FEE', `This restaurant's policy mentions a fee, so Pearl did not book: "${session.policy.slice(0, 220)}"`);
+      if (this.options.requireFreeCancellation !== false && session.policy && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy)) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee to a card on file, so Pearl stopped before booking.');
       this.step('FILLING');
       await page.locator('input[name="firstName"]').fill(input.contact.firstName);
       await page.locator('input[name="lastName"]').fill(input.contact.lastName);

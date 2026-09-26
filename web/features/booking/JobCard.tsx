@@ -28,6 +28,7 @@ export function JobCard() {
   return <AnimatePresence>{job && <>
     <motion.div className="scrim" variants={overlayFade} initial="hidden" animate="show" exit="exit" onClick={() => { if (!['SUBMITTING'].includes(job.state)) (job.state === 'READY' ? cancel : dismiss)(); }} />
     <div className="job-overlay"><motion.section className={`job-card state-${job.state.toLowerCase()}`} variants={panelPop} initial="hidden" animate="show" exit="exit" role="dialog" aria-modal="true" aria-label="Booking status">
+      {job.state !== 'SUBMITTING' && <button className="job-close" aria-label="Close" onClick={() => (job.state === 'READY' || job.state === 'PREPARING' ? cancel() : dismiss())}><Icon name="x" size={18} /></button>}
       <header className="job-head">
         <div><p className="job-eyebrow">{job.request.venue.city} · {job.request.venue.neighborhood}</p><h2>{titles[job.state] ?? job.state}</h2></div>
         {job.state === 'READY' && job.prepared && <HoldRing seconds={Math.max(0, Math.round((Date.parse(job.prepared.holdExpiresAt) - Date.now()) / 1000))} total={280} label="held" />}
@@ -46,6 +47,7 @@ export function JobCard() {
       </div>}
 
       {job.result && job.state !== 'READY' && <p className={`job-message ${job.state === 'CONFIRMED' ? 'ok' : job.state === 'FAILED' || job.state === 'EXPIRED' ? 'bad' : ''}`}>{job.result.message}</p>}
+      {job.state === 'FAILED' && job.result?.policy && job.result.code === 'CANCELLATION_FEE' && <blockquote className="policy-quote">{job.result.policy}</blockquote>}
       {job.result?.reference && <p className="reference"><span className="reference-label">Reservation</span><span className="reference-code">{job.result.reference}</span></p>}
       {job.state === 'FAILED' && job.result?.hasEvidence && <figure className="evidence"><img src={`/api/book/${job.id}/evidence.png`} alt="The restaurant’s page when Pearl stopped" /><figcaption className="muted quiet">What the restaurant’s page showed.{job.result.pageUrl && <> <a href={job.result.pageUrl} target="_blank" rel="noreferrer">Open it</a></>}</figcaption></figure>}
 
