@@ -73,7 +73,24 @@ ANTHROPIC_API_KEY=sk-ant-...     # the agent that reads chat requests
 BROWSERBASE_API_KEY=bb_live_...  # the cloud browser that books
 ```
 
-With the Anthropic key, chat understanding runs through the Anthropic API instead of the local Codex CLI. With the Browserbase key, `npm run demo` runs in `auto` mode against a remote Browserbase session per booking — no window. The Browserbase key alone is enough (the project resolves from it). Set `PEARL_AI_MODEL` to choose the model (`claude-sonnet-5` by default).
+With the Anthropic key, chat understanding runs through the Anthropic API instead of the local Codex CLI. With the Browserbase key, booking runs in `auto` mode against a remote Browserbase session per booking — no window. The Browserbase key alone is enough (the project resolves from it). Set `PEARL_AI_MODEL` to choose the model (`claude-sonnet-5` by default).
+
+**As one service.** `npm run build` compiles the web to `dist/`, and `npm start` runs a single server that serves that build and the API on one port (it reads the platform's `PORT` and binds `0.0.0.0`). `npm run demo` stays the two-process dev setup with hot reload.
+
+```bash
+npm run build && npm start   # one server, app + API, on http://localhost:8788
+```
+
+### Render
+
+The repo includes `render.yaml`, so in Render you can pick **New → Blueprint** and point it at the repo, or create a **Web Service** by hand with:
+
+- **Build command:** `npm install --include=dev && npm run build` (`--include=dev` keeps Vite available under Render's `NODE_ENV=production`).
+- **Start command:** `npm start`
+- **Health check path:** `/api/health`
+- **Environment:** `ANTHROPIC_API_KEY` and `BROWSERBASE_API_KEY` (both secret), plus `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` so the build skips the ~150 MB Chromium download it does not need (booking runs on Browserbase, or in the diner's own browser in handoff mode). Render injects `PORT` and the app binds `0.0.0.0` on its own.
+
+Without a Browserbase key the service still runs in handoff mode, where the diner finishes the booking in an in-app SevenRooms panel — no server browser at all. Note that Render's free instances have an ephemeral disk, so the local profile and bookings ledger reset on each deploy or restart.
 
 **How reCAPTCHA is handled:** Pearl fills the form on the Browserbase cloud browser. If reCAPTCHA challenges on submit, Pearl embeds Browserbase's live view of that cloud browser in the app and asks you to tick "I'm not a robot" there — a real human tick, in-app, no paid captcha-solver and no separate window. Pearl detects the token and submits. This can work on the free plan when reCAPTCHA offers the checkbox. If the datacenter IP scores too low to even offer one, set `BROWSERBASE_PROXIES=1` (paid) for a residential IP.
 

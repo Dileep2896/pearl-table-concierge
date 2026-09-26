@@ -44,8 +44,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const apiKey = env.ANTHROPIC_API_KEY || undefined;
   const provider: 'anthropic' | 'codex' | 'none' = !aiOn ? 'none' : apiKey ? 'anthropic' : 'codex';
   return {
-    apiPort: num(env.PEARL_DEMO_API_PORT, 8788),
-    host: env.PEARL_DEMO_HOST || '127.0.0.1',
+    // Prefer the platform's injected PORT (Render, etc.); fall back to the demo default for local runs.
+    apiPort: num(env.PORT, num(env.PEARL_DEMO_API_PORT, 8788)),
+    // Bind publicly when a platform PORT is present, otherwise stay on localhost for local dev.
+    host: env.PEARL_DEMO_HOST || (env.PORT ? '0.0.0.0' : '127.0.0.1'),
     useCodex: provider !== 'none',
     ai: { provider, apiKey, model: env.PEARL_AI_MODEL || 'claude-sonnet-5', maxTokens: num(env.PEARL_AI_MAX_TOKENS, 700) },
     dataDir,

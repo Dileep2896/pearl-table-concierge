@@ -7,6 +7,7 @@ import { BookingJobs, type JobsOptions } from '../server/jobs';
 import { AvailabilityService, closestSlot, summarize } from '../server/availability';
 import { ProfileStore } from '../server/profile';
 import { BookingLedger } from '../server/ledger';
+import { CodexQueue } from '../server/codex';
 import type { SevenRoomsBooker, PrepareResult, BookingResult } from '../server/booking-browser';
 import type { Slot } from '../server/sevenrooms';
 
@@ -156,5 +157,28 @@ describe('exact-time picks', () => {
     const venue = { slug: 'x', name: 'X', city: 'New York', neighborhood: 'West Village', timezone: 'America/New_York', address: '', cuisine: '' };
     const text = summarize([{ venue, slots: [slot('19:15')], pick: slot('19:15') }, { venue: { ...venue, slug: 'y' }, slots: [slot('19:00')], pick: slot('19:00') }], { exactTime: '19:00', date: '2026-10-02', partySize: 2, neighborhood: 'West Village', timeFrom: '18:30', timeTo: '20:30' });
     expect(text).toMatch(/2 restaurants have a table/); expect(text).toMatch(/1 at exactly 7:00 PM/); expect(text).toMatch(/Pick a restaurant/);
+  });
+});
+
+describe('production serving and health', () => {
+  it('falls back to index.html for a non-API GET but still 404s an unknown API route', async () => {
+    const jobs = new BookingJobs({ booker: () => fakeBooker({}) });
+    const app = createApp({ useCodex: false, availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'pearl-web.json')), webDir: 'dist', indexHtml: '<!doctype html><title>Pearl</title>' });
+    try {
+      const page = await app.request('/reservations');
+      expect(page.status).toBe(200); expect(await page.text()).toContain('<!doctype html>');
+      const missing = await app.request('/api/nope');
+      expect(missing.status).toBe(404); expect((await missing.json() as { error: string }).error).toBe('NOT_FOUND');
+    } finally { await jobs.close(); }
+  });
+  it('health reports the chat provider from a detached status callback (regression: bound this)', async () => {
+    const status = new CodexQueue().status; // detached reference must keep `this`
+    const jobs = new BookingJobs({ booker: () => fakeBooker({}) });
+    const app = createApp({ useCodex: true, modelSource: 'codex', availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'pearl-health.json')), health: () => ({ chat: status() }) });
+    try {
+      const res = await app.request('/api/health');
+      expect(res.status).toBe(200);
+      expect((await res.json() as { chat: { pending: number } }).chat.pending).toBe(0);
+    } finally { await jobs.close(); }
   });
 });

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod/v4';
 import { venues, venueBySlug } from './venues';
 import { chatTurn, chatInputSchema } from './chat';
@@ -32,6 +33,10 @@ export type AppServices = {
   now?: () => Date;
   /** Extra fields for /api/health, e.g. the browser pool's status. */
   health?: () => Record<string, unknown>;
+  /** In production, serve the built web from this directory (relative to cwd) and fall back to its index.html. */
+  webDir?: string;
+  /** The built index.html, served for any non-API GET so the single-page app loads on every path. */
+  indexHtml?: string;
 };
 
 /** HTTP only: parse, delegate, shape the response. Business rules live in the services. */
@@ -44,7 +49,12 @@ export function createApp(services: AppServices) {
     log('error', 'unhandled', { id: c.get('requestId'), path: new URL(c.req.url).pathname, message: error instanceof Error ? error.message : String(error) });
     return c.json({ error: 'INTERNAL', message: 'Something went wrong on the server. Check the API log.' }, 500);
   });
-  app.notFound(c => c.json({ error: 'NOT_FOUND', message: `No route for ${c.req.method} ${new URL(c.req.url).pathname}.` }, 404));
+  app.notFound(c => {
+    const path = new URL(c.req.url).pathname;
+    // In production, any non-API GET that matched no file falls back to the single-page app's index.html.
+    if (services.webDir && services.indexHtml && c.req.method === 'GET' && !path.startsWith('/api')) return c.html(services.indexHtml);
+    return c.json({ error: 'NOT_FOUND', message: `No route for ${c.req.method} ${path}.` }, 404);
+  });
 
   app.get('/api/health', c => c.json({ ok: true, chat: services.useCodex ? services.modelSource ?? 'codex' : 'parser', bookingMode: services.bookingMode ?? 'auto', venues: venues.length, jobs: services.jobs.status(), ...services.health?.() }));
   app.get('/api/venues', c => c.json({ venues }));
@@ -92,5 +102,7 @@ export function createApp(services: AppServices) {
   });
   /** Recent jobs with their outcomes and submit diagnostics, newest first. Contact details are stripped. */
   app.get('/api/jobs', c => c.json({ jobs: services.jobs.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20).map(({ request, ...job }) => ({ ...job, request: { venue: request.venue.slug, date: request.date, time: request.time, partySize: request.partySize } })) }));
+  // Registered last, so it only handles what the API routes above did not: the built web (assets, index.html).
+  if (services.webDir) app.use('/*', serveStatic({ root: services.webDir }));
   return app;
 }

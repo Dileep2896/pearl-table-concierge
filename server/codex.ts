@@ -53,7 +53,8 @@ export class CodexQueue {
   private pending = 0;
   constructor(private options: { run?: CodexRunner; timeoutMs?: number; cacheMs?: number; maxQueued?: number; now?: () => number } = {}) {}
   private now() { return this.options.now?.() ?? Date.now(); }
-  status() { return { pending: this.pending, cached: this.cache.size }; }
+  // Arrow field so a detached reference (e.g. passed as a callback) keeps `this` bound to the queue.
+  status = () => ({ pending: this.pending, cached: this.cache.size });
 
   run: CodexRunner = (prompt, schema) => {
     const key = createHash('sha256').update(prompt).update(JSON.stringify(schema)).digest('hex');
