@@ -18,6 +18,7 @@
     "postinstall": "playwright install chromium"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@browserbasehq/sdk": "^2.21.0",
     "@hono/node-server": "^1.19.0",
     "chrono-node": "^2.9.0",

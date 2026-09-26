@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 export type Config = {
   apiPort: number;
   host: string;
+  /** Whether the model path runs at all (false = deterministic parser only). Kept in sync with `ai.provider`. */
   useCodex: boolean;
+  /** Chat backend: an Anthropic API key (deployable), the local Codex CLI, or none (parser only). */
+  ai: { provider: 'anthropic' | 'codex' | 'none'; apiKey?: string; model: string; maxTokens: number };
   dataDir: string;
   profilePath: string;
   ledgerPath: string;
@@ -36,10 +39,15 @@ const num = (value: string | undefined, fallback: number) => { const n = Number(
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataDir = env.PEARL_DATA_DIR || join(root, '.local');
+  // Model on unless PEARL_DEMO_AI=off. Prefer an Anthropic API key (deployable) over the local Codex CLI.
+  const aiOn = env.PEARL_DEMO_AI !== 'off';
+  const apiKey = env.ANTHROPIC_API_KEY || undefined;
+  const provider: 'anthropic' | 'codex' | 'none' = !aiOn ? 'none' : apiKey ? 'anthropic' : 'codex';
   return {
     apiPort: num(env.PEARL_DEMO_API_PORT, 8788),
     host: env.PEARL_DEMO_HOST || '127.0.0.1',
-    useCodex: env.PEARL_DEMO_AI !== 'off',
+    useCodex: provider !== 'none',
+    ai: { provider, apiKey, model: env.PEARL_AI_MODEL || 'claude-sonnet-5', maxTokens: num(env.PEARL_AI_MAX_TOKENS, 700) },
     dataDir,
     profilePath: env.PEARL_DEMO_PROFILE || join(dataDir, 'profile.json'),
     ledgerPath: env.PEARL_DEMO_LEDGER || join(dataDir, 'bookings.json'),

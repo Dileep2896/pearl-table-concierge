@@ -8,7 +8,7 @@ import { ProfileStore, isComplete } from './profile';
 import { AvailabilityService, summarize, type SearchIntent } from './availability';
 import { BookingJobs } from './jobs';
 import type { BookingLedger } from './ledger';
-import type { CodexRunner } from './codex';
+import type { ModelRunner } from './ai';
 import { ApiError } from './errors';
 import { randomUUID } from 'node:crypto';
 import { log, requestLogger } from './logger';
@@ -21,7 +21,10 @@ export { closestSlot, summarize } from './availability';
 export type AppServices = {
   useCodex: boolean;
   bookingMode?: 'auto' | 'handoff';
-  codex?: CodexRunner;
+  /** The chat model backend (Anthropic API or Codex CLI). Absent = parser only. */
+  model?: ModelRunner;
+  /** Which backend `model` is, so a turn it answers is labelled correctly. */
+  modelSource?: 'anthropic' | 'codex';
   availability: AvailabilityService;
   jobs: BookingJobs;
   profiles: ProfileStore;
@@ -43,7 +46,7 @@ export function createApp(services: AppServices) {
   });
   app.notFound(c => c.json({ error: 'NOT_FOUND', message: `No route for ${c.req.method} ${new URL(c.req.url).pathname}.` }, 404));
 
-  app.get('/api/health', c => c.json({ ok: true, codex: services.useCodex, bookingMode: services.bookingMode ?? 'auto', venues: venues.length, jobs: services.jobs.status(), ...services.health?.() }));
+  app.get('/api/health', c => c.json({ ok: true, chat: services.useCodex ? services.modelSource ?? 'codex' : 'parser', bookingMode: services.bookingMode ?? 'auto', venues: venues.length, jobs: services.jobs.status(), ...services.health?.() }));
   app.get('/api/venues', c => c.json({ venues }));
 
   app.get('/api/profile', async c => { const profile = await services.profiles.read(); return c.json({ profile, complete: isComplete(profile) }); });
@@ -56,7 +59,7 @@ export function createApp(services: AppServices) {
   app.post('/api/chat', async c => {
     const input = chatInputSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success) throw new ApiError(400, 'BAD_REQUEST', 'Send messages and intent.');
-    const turn = await chatTurn(input.data, { useCodex: services.useCodex, now: services.now?.(), run: services.codex });
+    const turn = await chatTurn(input.data, { useCodex: services.useCodex, now: services.now?.(), run: services.model, modelSource: services.modelSource });
     if (!turn.ready || turn.intent.unsupportedLocation) return c.json({ ...turn, ready: false, results: null });
     const intent = turn.intent as SearchIntent;
     const results = await services.availability.search(intent);

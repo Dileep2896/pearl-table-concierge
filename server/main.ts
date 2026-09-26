@@ -9,6 +9,7 @@ import { BookingLedger } from './ledger';
 import { ProfileStore } from './profile';
 import { AvailabilityService } from './availability';
 import { CodexQueue } from './codex';
+import { createAnthropicRunner, type ModelRunner } from './ai';
 import { log } from './logger';
 
 const config = loadConfig();
@@ -18,21 +19,32 @@ const contexts: ContextSource = config.browserbase
   : new BrowserPool({ headless: config.headless, channel: config.browserChannel, cdpUrl: config.browserCdpUrl, args: config.browserOffscreen && !config.browserCdpUrl ? ['--window-position=-2400,0', '--window-size=460,940'] : undefined });
 const remote = Boolean(config.browserbase || config.browserCdpUrl);
 const ledger = new BookingLedger(config.ledgerPath);
-const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
+// Chat backend: an Anthropic API key (deployable) if set, else the local Codex CLI, else parser only.
+let model: ModelRunner | undefined;
+let modelSource: 'anthropic' | 'codex' | undefined;
+let modelStatus: () => Record<string, unknown> = () => ({ provider: 'parser' });
+if (config.ai.provider === 'anthropic' && config.ai.apiKey) {
+  const anthropic = createAnthropicRunner({ apiKey: config.ai.apiKey, model: config.ai.model, maxTokens: config.ai.maxTokens });
+  model = anthropic.run; modelSource = 'anthropic'; modelStatus = anthropic.status;
+} else if (config.ai.provider === 'codex') {
+  const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
+  model = codex.run; modelSource = 'codex'; modelStatus = codex.status;
+}
 const jobs = new BookingJobs({
   booker: (onStep, onVerification, onLiveView) => new SevenRoomsBooker({ contexts, onStep, onVerification, onLiveView, requireFreeCancellation: config.requireFreeCancellation, remote, liveView: contexts.liveView?.bind(contexts), humanSolveMs: remote || !config.headless ? config.humanSolveMs : undefined }),
   ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs, humanSolveMs: config.headless ? undefined : config.humanSolveMs,
 });
 const app = createApp({
-  useCodex: config.useCodex, bookingMode: config.bookingMode, codex: codex.run,
+  useCodex: config.useCodex, bookingMode: config.bookingMode, model, modelSource,
   availability: new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs }),
   jobs, ledger, profiles: new ProfileStore(config.profilePath),
-  health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, codexQueue: codex.status() }),
+  health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, chat: modelStatus() }),
 });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
-  console.log(`Pearl demo API: http://${config.host}:${info.port} · chat via ${config.useCodex ? 'Codex CLI' : 'parser'} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
-  log('info', 'api_started', { port: info.port, codex: config.useCodex, dataDir: config.dataDir });
+  const chatVia = config.ai.provider === 'anthropic' ? `Anthropic ${config.ai.model}` : config.ai.provider === 'codex' ? 'Codex CLI' : 'parser';
+  console.log(`Pearl demo API: http://${config.host}:${info.port} · chat via ${chatVia} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
+  log('info', 'api_started', { port: info.port, chat: config.ai.provider, model: config.ai.provider === 'anthropic' ? config.ai.model : undefined, dataDir: config.dataDir });
 });
 
 /** Release every hold and close Chromium before the process goes away. */

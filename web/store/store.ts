@@ -4,7 +4,7 @@ import { emptyContact, profileComplete, sevenRoomsUrl } from '../lib/format';
 
 type Theme = 'dark' | 'light';
 export type Page = 'concierge' | 'reservations' | 'settings';
-type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; nearby: VenueAvailability[] | null; thinking: boolean; source: 'codex' | 'parser' | null };
+type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; nearby: VenueAvailability[] | null; thinking: boolean; source: 'anthropic' | 'codex' | 'parser' | null };
 const busy = (s: BookingJob['state']) => s === 'PREPARING' || s === 'READY' || s === 'SUBMITTING';
 const welcome: Message = { id: 'welcome', role: 'assistant', text: 'Good evening. Tell me where, when, and for how many, and I will find a table. Give me a window like “Friday 7 to 9” to see every opening, or one time like “Friday at 8” and I will hold the closest table at each restaurant so you only choose the room.' };
 
