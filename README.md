@@ -16,7 +16,7 @@ PEARL_DEMO_AI=off npm run demo   # skip Codex, use the deterministic parser only
 
 ## Frontend
 
-React + Vite with a typed Zustand store (`web/store/store.ts`) holding chat, availability, the booking job (with its own polling lifecycle), the profile, saved bookings and the theme. UI is split into `web/ui` primitives and `web/features/*` (chat, venues, booking, profile, bookings). Motion is Framer Motion: shimmer while tables load, a lit stepper during preparation, a draining brass hold-ring, and a confirm seal. Luxury dark and light themes are CSS custom properties in `web/styles/theme.css`; the theme follows the system on first load and is remembered after.
+React + Vite with a typed Zustand store (`web/store/store.ts`) holding chat, availability, the booking job (with its own polling lifecycle), the profile, saved bookings and the theme. The app is a sidebar shell with three pages — Concierge, Reservations, Settings — collapsing to a bottom tab bar on mobile. UI is split into `web/ui` primitives and `web/features/*` (chat, venues, booking, profile, bookings). Motion is Framer Motion: shimmer while tables load, a lit stepper during preparation, a draining brass hold-ring, and a confirm seal. Luxury dark and light themes are CSS custom properties in `web/styles/theme.css`; the theme follows the system on first load and is remembered after.
 
 ## Configuration
 

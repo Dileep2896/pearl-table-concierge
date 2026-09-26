@@ -7,3 +7,5 @@ export const riseItem: Variants = { hidden: { opacity: 0, y: 12 }, show: { opaci
 export const stagger = (delay = 0, gap = 0.05): Variants => ({ hidden: {}, show: { transition: { delayChildren: delay, staggerChildren: gap } } });
 export const overlayFade: Variants = { hidden: { opacity: 0 }, show: { opacity: 1 }, exit: { opacity: 0 } };
 export const panelPop: Variants = { hidden: { opacity: 0, y: 24, scale: 0.985 }, show: { opacity: 1, y: 0, scale: 1, transition: spring }, exit: { opacity: 0, y: 16, scale: 0.99, transition: { duration: 0.2 } } };
+
+export const fadeSwap: Variants = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] } }, exit: { opacity: 0, y: -8, transition: { duration: 0.18 } } };
