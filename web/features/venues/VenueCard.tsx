@@ -17,15 +17,14 @@ export function VenueCard({ entry, intent, selected, onPick }: { entry: VenueAva
     {requestOnly && <p className="muted quiet request-note">The restaurant confirms these times by hand, so they can’t be booked in one tap. Open it on SevenRooms to request.</p>}
     {entry.error && <p className="muted quiet">We couldn’t reach this restaurant just now.</p>}
     {!entry.error && !entry.slots.length && <p className="muted quiet">No tables in this window.</p>}
-    {intent.exactTime && entry.pick && <div className="pickrow">
+    {entry.pick && <div className="pickrow">
       <motion.button whileTap={{ scale: 0.98 }} className={`pickbtn ${selected === entry.pick ? 'on' : ''}`} onClick={() => onPick(venue, entry.pick!)}>
         <span className="pickbtn-time">{entry.pick.label}</span>
-        <span className="pickbtn-sub">{entry.pick.time !== intent.exactTime ? `closest to ${timeLabel(intent.exactTime)}` : 'your time'}{entry.pick.area ? ` · ${entry.pick.area}` : ''}</span>
+        <span className="pickbtn-sub">{intent.exactTime && entry.pick.time !== intent.exactTime ? `closest to ${timeLabel(intent.exactTime)}` : 'my suggestion'}{entry.pick.area ? ` · ${entry.pick.area}` : ''}</span>
         <Icon name="arrow" size={18} />
       </motion.button>
       {bookable.length > 1 && <details className="others"><summary>Other times</summary><div className="chips">{entry.slots.filter(s => s !== entry.pick).map(s => <SlotChip key={s.time} slot={s} selected={selected === s} onPick={x => onPick(venue, x)} />)}</div></details>}
     </div>}
-    {intent.exactTime && !entry.pick && entry.slots.length > 0 && <p className="muted quiet">Only by-request times near {timeLabel(intent.exactTime)}.</p>}
-    {!intent.exactTime && entry.slots.length > 0 && <div className="chips">{entry.slots.map(s => <SlotChip key={s.time} slot={s} selected={selected === s} onPick={x => onPick(venue, x)} />)}</div>}
+    {!entry.pick && entry.slots.length > 0 && <p className="muted quiet">{intent.exactTime ? `Only by-request times near ${timeLabel(intent.exactTime)}.` : 'Only by-request times in this window.'}</p>}
   </motion.article>;
 }

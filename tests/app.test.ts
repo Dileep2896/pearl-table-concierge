@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/app';
 import { BookingJobs, type JobsOptions } from '../server/jobs';
-import { AvailabilityService, closestSlot, summarize } from '../server/availability';
+import { AvailabilityService, closestSlot, pickFor, summarize } from '../server/availability';
 import { ProfileStore } from '../server/profile';
 import { BookingLedger } from '../server/ledger';
 import type { SevenRoomsBooker, PrepareResult, BookingResult } from '../server/booking-browser';
@@ -144,6 +144,12 @@ describe('booking API', () => {
 
 describe('exact-time picks', () => {
   const slot = (time: string, type: 'book' | 'request' = 'book'): Slot => ({ venue: 'v', time, label: time, timeIso: `2026-10-02 ${time}:00`, area: '', type, accessId: 'a', shiftId: 's', shiftName: '' });
+  it('recommends the slot nearest the window midpoint when no exact time is named', () => {
+    const slots = [slot('19:00'), slot('19:30'), slot('20:00'), slot('20:30'), slot('21:00')];
+    expect(pickFor(slots, { timeFrom: '19:00', timeTo: '21:00' })?.time).toBe('20:00');
+    expect(pickFor(slots, { exactTime: '19:00', timeFrom: '18:30', timeTo: '20:30' })?.time).toBe('19:00');
+    expect(pickFor([slot('19:00', 'request')], { timeFrom: '19:00', timeTo: '21:00' })).toBeUndefined();
+  });
   it('chooses the closest bookable slot, later on a tie, ignoring request-only', () => {
     expect(closestSlot([slot('18:30'), slot('19:00', 'request'), slot('19:15'), slot('19:30')], '19:00')?.time).toBe('19:15');
     expect(closestSlot([slot('18:45'), slot('19:15')], '19:00')?.time).toBe('19:15');
