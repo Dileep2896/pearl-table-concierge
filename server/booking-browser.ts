@@ -9,15 +9,14 @@ export const contactSchema = z.object({
   email: z.string().trim().email().max(120), phone: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'phone must be digits'),
 });
 export type Contact = z.infer<typeof contactSchema>;
-export const bookingRequestSchema = z.object({ venue: z.string().regex(/^[a-z0-9]+$/), date: dateSchema, time: timeSchema, partySize: z.number().int().min(1).max(8), contact: contactSchema, timezone: z.string().min(1).max(64).default('America/New_York') });
+export const bookingRequestSchema = z.object({ venue: z.string().regex(/^[a-z0-9-]+$/), date: dateSchema, time: timeSchema, partySize: z.number().int().min(1).max(8), contact: contactSchema, timezone: z.string().min(1).max(64).default('America/New_York') });
 export type BookingRequest = z.input<typeof bookingRequestSchema>;
 
 export type BookingStep = 'OPENING' | 'SELECTING_TIME' | 'HOLDING' | 'FILLING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED';
-/** `screenshot` is only set on FAILED: the restaurant's page at the moment Tavola stopped, as evidence for the diner. */
-export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; /** Set when the policy mentions a cancellation fee: the diner decides whether to go ahead. */ feeWarning?: string; /** Set when the checkout needs the diner to add a card or sign in: on a remote browser they finish it in the live view. */ needsDiner?: 'card' | 'login'; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
+export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; /** Set when the policy mentions a cancellation fee: the diner decides whether to go ahead. */ feeWarning?: string; /** Set when the checkout needs the diner to add a card or sign in: on a remote browser they finish it in the live view. */ needsDiner?: 'card' | 'login'; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string };
 /** What happened on the wire after Submit: enough to explain a rejection without re-running it. */
 export type SubmitDiagnostics = { finalUrl: string; requests: { method: string; url: string; status?: number; body?: string; failure?: string }[]; console: string[]; pageText: string };
-export type BookingResult = { status: 'CONFIRMED' | 'FAILED'; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; pageText?: string; screenshot?: Buffer; response?: unknown; diagnostics?: SubmitDiagnostics };
+export type BookingResult = { status: 'CONFIRMED' | 'FAILED'; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; pageText?: string; response?: unknown; diagnostics?: SubmitDiagnostics };
 
 export class BookingFailure extends Error { constructor(public code: string, message: string) { super(message); this.name = 'BookingFailure'; } }
 
@@ -37,7 +36,7 @@ export function extractReference(source: unknown, pageText = ''): string | undef
   return text?.[1];
 }
 
-type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bookStatus?: number; holdResponse?: unknown; policy: string; policyShot?: Buffer; /** Set when the diner must finish a card or login step in the live view. */ needsDiner?: 'card' | 'login' };
+type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bookStatus?: number; holdResponse?: unknown; policy: string; /** Set when the diner must finish a card or login step in the live view. */ needsDiner?: 'card' | 'login' };
 
 /**
  * Drives the public SevenRooms guest widget exactly as a diner would, in two phases.
@@ -87,7 +86,7 @@ export class SevenRoomsBooker {
       if (await select.isVisible().catch(() => false)) await select.click();
       await checkout.waitFor({ state: 'visible', timeout: 20000 }).catch(() => { throw new BookingFailure('NO_CHECKOUT', 'The checkout form did not appear. The table may have just been taken.'); });
       // A cancellation fee is a heads-up, not a wall: unless strict mode is set, prepare the table and let the diner decide at confirm.
-      ({ text: session.policy, screenshot: session.policyShot } = await this.readPolicy(page));
+      session.policy = (await this.readPolicy(page)).text;
       const hasFee = Boolean(session.policy) && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy);
       if (hasFee && this.options.requireFreeCancellation === true) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee, so Tavola stopped before booking.');
       const feeWarning = hasFee ? session.policy : undefined;
@@ -123,12 +122,10 @@ export class SevenRoomsBooker {
     } catch (error) {
       const failure = error instanceof BookingFailure ? error : new BookingFailure('BROWSER_ERROR', `The booking browser hit an error: ${(error as Error)?.message?.split('\n')[0] ?? 'unknown'}`);
       const pageText = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')).replace(/\s+/g, ' ').slice(0, 800);
-      // Evidence: the policy dialog itself for a fee stop, otherwise the page as it looked when Tavola stopped.
-      const screenshot = failure.code === 'CANCELLATION_FEE' && session.policyShot ? session.policyShot : await page.screenshot({ type: 'png', fullPage: true, timeout: 8000 }).catch(() => undefined);
       this.step('FAILED', failure.code);
       log('info', 'booking_stopped', { venue: input.venue, code: failure.code, ms: Math.round(performance.now() - started) });
       await context.close().catch(() => {});
-      return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText, screenshot };
+      return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText };
     }
   }
 
@@ -193,29 +190,28 @@ export class SevenRoomsBooker {
       }
       const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
       diagnostics.finalUrl = page.url(); diagnostics.pageText = pageText.slice(0, 1500);
-      const screenshot = await page.screenshot({ type: 'png', fullPage: true, timeout: 8000 }).catch(() => undefined);
       log('info', 'booking_submitted', { outcome, bookStatus: session.bookStatus, finalUrl: diagnostics.finalUrl, requests: diagnostics.requests.map(r => `${r.method} ${r.url.replace(/^https:\/\/www\.sevenrooms\.com/, '')} → ${r.status ?? r.failure ?? '…'}`), console: diagnostics.console.slice(0, 5) });
       const serverSaid = (() => { const r = session.bookResponse as { msg?: string; message?: string; errors?: unknown; raw?: string } | undefined; return r?.msg || r?.message || (r?.errors ? JSON.stringify(r.errors).slice(0, 200) : '') || r?.raw || ''; })();
       const captchaRejected = diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line));
-      if (outcome === 'captcha') throw Object.assign(new BookingFailure('CAPTCHA_UNSOLVED', 'SevenRooms asked for a human verification and nobody completed it in time. Nothing was booked. Pick the time again and tick the checkbox in the browser window when it appears.'), { pageText, screenshot });
-      if (outcome === 'error') throw Object.assign(new BookingFailure(captchaRejected ? 'CAPTCHA_REJECTED' : 'WIDGET_REJECTED', captchaRejected ? `SevenRooms' reCAPTCHA rejected this automated browser (HTTP ${session.bookStatus}). Nothing was booked.${this.options.humanSolveMs ? '' : ' Run the API without TAVOLA_HEADLESS so a person can pass the checkbox in the browser window.'}` : `SevenRooms did not accept the booking (HTTP ${session.bookStatus ?? '?'}${serverSaid ? `: ${serverSaid}` : ''}). Nothing was booked.`), { pageText, screenshot });
-      if (outcome === 'timeout') throw Object.assign(new BookingFailure('NO_CONFIRMATION', 'No confirmation appeared within 40 seconds. Check your email before retrying.'), { pageText, screenshot });
+      if (outcome === 'captcha') throw Object.assign(new BookingFailure('CAPTCHA_UNSOLVED', 'SevenRooms asked for a human verification and nobody completed it in time. Nothing was booked. Pick the time again and tick the checkbox in the browser window when it appears.'), { pageText });
+      if (outcome === 'error') throw Object.assign(new BookingFailure(captchaRejected ? 'CAPTCHA_REJECTED' : 'WIDGET_REJECTED', captchaRejected ? `SevenRooms' reCAPTCHA rejected this automated browser (HTTP ${session.bookStatus}). Nothing was booked.${this.options.humanSolveMs ? '' : ' Run the API without TAVOLA_HEADLESS so a person can pass the checkbox in the browser window.'}` : `SevenRooms did not accept the booking (HTTP ${session.bookStatus ?? '?'}${serverSaid ? `: ${serverSaid}` : ''}). Nothing was booked.`), { pageText });
+      if (outcome === 'timeout') throw Object.assign(new BookingFailure('NO_CONFIRMATION', 'No confirmation appeared within 40 seconds. Check your email before retrying.'), { pageText });
       const reference = extractReference(session.bookResponse, pageText) ?? (/is_success=true/.test(page.url()) ? 'confirmed' : undefined);
       this.step('CONFIRMED', reference);
-      return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${reference ? ` (${reference})` : ''}. A confirmation email is on its way.`, reference, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), screenshot, response: session.bookResponse ?? session.holdResponse, diagnostics };
+      return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${reference ? ` (${reference})` : ''}. A confirmation email is on its way.`, reference, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), response: session.bookResponse ?? session.holdResponse, diagnostics };
     } catch (error) {
       const failure = error instanceof BookingFailure ? error : new BookingFailure('BROWSER_ERROR', `The booking browser hit an error while confirming: ${(error as Error)?.message?.split('\n')[0] ?? 'unknown'}`);
-      const extra = error as { pageText?: string; screenshot?: Buffer };
+      const extra = error as { pageText?: string };
       if (!diagnostics.finalUrl) { diagnostics.finalUrl = page.url(); diagnostics.pageText = (extra.pageText ?? '').slice(0, 1500); }
       this.step('FAILED', failure.code);
-      return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText: extra.pageText, screenshot: extra.screenshot, diagnostics };
+      return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText: extra.pageText, diagnostics };
     } finally { page.off('request', onRequest); page.off('response', onResponse); page.off('requestfailed', onFailed); page.off('console', onConsole); await this.close(); }
   }
 
   /** Convenience for tests and scripts: prepare then confirm in one go. */
   async book(request: BookingRequest): Promise<BookingResult> {
     const prepared = await this.prepare(request);
-    if (prepared.status !== 'READY') return { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl, pageText: prepared.pageText, screenshot: prepared.screenshot };
+    if (prepared.status !== 'READY') return { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl, pageText: prepared.pageText };
     return this.confirm();
   }
 
@@ -255,8 +251,8 @@ export class SevenRoomsBooker {
     if (frames > 0) return true;
     return await page.locator('input[autocomplete^="cc-"], input[name*="cardNumber" i], input[name="postalCode"], input[placeholder*="card number" i]').filter({ visible: true }).count() > 0;
   }
-  /** Opens the policy dialog if the widget offers one, reads it, photographs it, and closes it again. */
-  private async readPolicy(page: Page): Promise<{ text: string; screenshot?: Buffer }> {
+  /** Opens the policy dialog if the widget offers one, reads its text, and closes it again. */
+  private async readPolicy(page: Page): Promise<{ text: string }> {
     const info = page.locator('[data-test="agreement-term-info-button"]').first();
     if (await info.count() === 0) return { text: '' };
     try {
@@ -264,10 +260,9 @@ export class SevenRoomsBooker {
       const dialog = page.locator('[role="dialog"]').last();
       await dialog.waitFor({ state: 'visible', timeout: 3000 });
       const text = (await dialog.innerText()).replace(/\s+/g, ' ').trim();
-      const screenshot = await page.screenshot({ type: 'png', fullPage: false, timeout: 5000 }).catch(() => undefined);
       await page.keyboard.press('Escape');
       await dialog.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
-      return { text: text.replace(/^(?:Cancellation|Marketing) Policy\s*/i, '').slice(0, 600), screenshot };
+      return { text: text.replace(/^(?:Cancellation|Marketing) Policy\s*/i, '').slice(0, 600) };
     } catch { return { text: '' }; }
   }
   /** True when reCAPTCHA has switched from its invisible badge to the "I'm not a robot" checkbox. */
@@ -287,15 +282,13 @@ export class SevenRoomsBooker {
         const token = await page.evaluate(() => { try { return (window as any).grecaptcha?.enterprise?.getResponse() || ''; } catch { return ''; } }).catch(() => '');
         if (token) { pressed = true; log('info', 'booking_captcha_solved'); this.step('SUBMITTING', 'verification passed, submitting'); await submit.click().catch(() => {}); }
       }
-      const text = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
-      if (/reservation (?:is )?confirmed|you're all set|you’re all set|booking confirmed/i.test(text) || /confirmation|confirmed|success/i.test(page.url())) return 'confirmed';
       await page.waitForTimeout(500);
     }
     return 'captcha';
   }
   /**
-   * Resolves 'confirmed' when the widget's book call succeeds or a confirmation page renders, 'error' when the
-   * server rejects it.
+   * Resolves 'confirmed' only when the widget's book call is captured with a 2xx status, 'error' when the server
+   * rejects it or the page shows a failure, 'timeout' otherwise. A confirmation-looking page alone is not enough.
    */
   private async awaitOutcome(page: Page, session: Session, timeoutMs: number): Promise<'confirmed' | 'error' | 'captcha' | 'timeout'> {
     const end = Date.now() + timeoutMs;
@@ -306,10 +299,9 @@ export class SevenRoomsBooker {
         const bodyRejects = typeof bodyStatus === 'number' && bodyStatus >= 400;
         return session.bookStatus < 400 && !bodyRejects ? 'confirmed' : 'error';
       }
-      const url = page.url();
-      if (/confirmation|confirmed|success/i.test(url)) return 'confirmed';
+      // Only a captured successful book response (above) counts as confirmed — a "confirmed"-looking URL or page
+      // text is never enough on its own, so Tavola never records a booking that did not actually go through.
       const text = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
-      if (/reservation (?:is )?confirmed|you're all set|you’re all set|booking confirmed|see you (?:on|at)/i.test(text)) return 'confirmed';
       if (/no longer available|something went wrong|unable to complete|could not be completed|try again later|verify you are human|captcha/i.test(text)) return 'error';
       await page.waitForTimeout(500);
     }

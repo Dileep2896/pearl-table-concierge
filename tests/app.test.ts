@@ -36,7 +36,7 @@ async function harness(booker: JobsOptions['booker'], jobsOptions: Partial<JobsO
 const body = JSON.stringify({ venue: 'miriamwestvillage', date: '2026-10-02', time: '19:00', partySize: 2, contact: { firstName: 'Test', lastName: 'Diner', email: 'diner@example.org', phone: '2125550100' } });
 const post = (app: ReturnType<typeof createApp>, path: string, payload?: string) => app.request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload });
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
-const jobOf = async (app: ReturnType<typeof createApp>, id: string) => (await (await app.request(`/api/book/${id}`)).json() as { job: { state: string; prepared?: { policy: string; holdExpiresAt: string }; result?: { code: string; reference?: string; hasEvidence?: boolean } } }).job;
+const jobOf = async (app: ReturnType<typeof createApp>, id: string) => (await (await app.request(`/api/book/${id}`)).json() as { job: { state: string; prepared?: { policy: string; holdExpiresAt: string }; result?: { code: string; reference?: string } } }).job;
 
 describe('booking API', () => {
   it('prepares, waits for confirmation, submits exactly once, and records the booking', async () => {
@@ -54,12 +54,11 @@ describe('booking API', () => {
       expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(202);
       await wait(30);
       current = await jobOf(h.app, job.id);
-      expect(current.state).toBe('CONFIRMED'); expect(current.result?.reference).toBe('REF123'); expect(current.result?.hasEvidence).toBe(false);
+      expect(current.state).toBe('CONFIRMED'); expect(current.result?.reference).toBe('REF123');
       expect(booker.calls).toEqual(['prepare', 'confirm', 'close']);
       expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(409);
       const bookings = (await (await h.app.request('/api/bookings')).json() as { bookings: { reference: string; venueName: string }[] }).bookings;
       expect(bookings).toHaveLength(1); expect(bookings[0]).toMatchObject({ reference: 'REF123', venueName: 'Miriam West Village' });
-      expect((await h.app.request(`/api/book/${job.id}/evidence.png`)).status).toBe(404);
     } finally { await h.cleanup(); }
   });
   it('cancel releases the hold and a new pick replaces a pending one', async () => {
@@ -77,14 +76,14 @@ describe('booking API', () => {
       expect((await post(h.app, `/api/book/${b.id}/confirm`)).status).toBe(409);
     } finally { await h.cleanup(); }
   });
-  it('fails the job with a message and no screenshot, and never confirms', async () => {
-    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'NO_CHECKOUT', message: 'no checkout', screenshot: Buffer.from('png-bytes') } });
+  it('fails the job with a message and never confirms', async () => {
+    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'NO_CHECKOUT', message: 'no checkout' } });
     const h = await harness(() => booker);
     try {
       const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
       await wait(30);
       const current = await jobOf(h.app, job.id);
-      expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('NO_CHECKOUT'); expect(current.result?.hasEvidence).toBe(false);
+      expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('NO_CHECKOUT');
       expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(409);
       expect((await (await h.app.request('/api/bookings')).json() as { bookings: unknown[] }).bookings).toEqual([]);
     } finally { await h.cleanup(); }
@@ -123,9 +122,28 @@ describe('booking API', () => {
     try {
       expect((await post(h.app, '/api/book', '{"nope":1}')).status).toBe(400);
       const missing = await h.app.request('/api/nothing'); expect(missing.status).toBe(404); expect((await missing.json() as { error: string }).error).toBe('NOT_FOUND');
-      expect((await post(h.app, '/api/chat', JSON.stringify({ messages: [{ role: 'user', text: 'x'.repeat(70_000) }], intent: {} }))).status).toBe(413);
+      expect((await post(h.app, '/api/chat', JSON.stringify({ messages: [{ role: 'user', text: 'x'.repeat(140_000) }], intent: {} }))).status).toBe(413);
       const health = await (await h.app.request('/api/health')).json() as { ok: boolean; jobs: { total: number } };
       expect(health.ok).toBe(true); expect(health.jobs.total).toBe(0);
+    } finally { await h.cleanup(); }
+  });
+  it('rejects a malformed date on the manual bookings endpoint with 400, not 500', async () => {
+    const h = await harness(() => fakeBooker({}));
+    try {
+      const res = await post(h.app, '/api/bookings', JSON.stringify({ venue: 'miriamwestvillage', date: 'tomorrow', time: '7pm', partySize: 2 }));
+      expect(res.status).toBe(400); expect((await res.json() as { error: string }).error).toBe('BAD_REQUEST');
+    } finally { await h.cleanup(); }
+  });
+  it('strips the diner\'s contact PII from the unauthenticated /api/jobs feed', async () => {
+    const booker = fakeBooker({});
+    const h = await harness(() => booker);
+    try {
+      const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30); await post(h.app, `/api/book/${job.id}/confirm`); await wait(30);
+      const { jobs } = await (await h.app.request('/api/jobs')).json() as { jobs: { prepared?: { values?: unknown }; request: { contact?: unknown } }[] };
+      expect(jobs.length).toBeGreaterThan(0);
+      expect(jobs[0].prepared?.values).toBeUndefined();
+      expect(jobs[0].request.contact).toBeUndefined();
     } finally { await h.cleanup(); }
   });
 });

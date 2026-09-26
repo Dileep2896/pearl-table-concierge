@@ -50,8 +50,20 @@ export class BrowserbaseSource implements ContextSource {
     log('info', 'browserbase_session', { id: session.id, region: (session as { region?: string }).region });
     const browser = await chromium.connectOverCDP(session.connectUrl, { timeout: 30_000 });
     // Browserbase hands back one ready context; close the connection (which ends the session) when we're done with it.
-    const context = browser.contexts()[0] ?? await browser.newContext(options);
+    const reused = browser.contexts()[0];
+    const context = reused ?? await browser.newContext(options);
     this.sessions.set(context, session.id);
+    // The reused context ignores the timezone/locale we asked for, so apply them via CDP (best-effort) so the
+    // venue's local times render correctly in auto mode on Browserbase.
+    if (reused && (options.timezoneId || options.locale)) {
+      try {
+        const page = context.pages()[0] ?? await context.newPage();
+        const cdp = await context.newCDPSession(page);
+        if (options.timezoneId) await cdp.send('Emulation.setTimezoneOverride', { timezoneId: options.timezoneId }).catch(() => {});
+        if (options.locale) await cdp.send('Emulation.setLocaleOverride', { locale: options.locale }).catch(() => {});
+        await cdp.detach().catch(() => {});
+      } catch { /* best effort: booking still works, times may render in the session's default zone */ }
+    }
     context.once('close', () => { void browser.close().catch(() => {}); });
     return context;
   }

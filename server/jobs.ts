@@ -6,7 +6,7 @@ import { ApiError } from './errors';
 import { log } from './logger';
 
 export type JobState = 'PREPARING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
-export type JobResult = { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean; diagnostics?: SubmitDiagnostics };
+export type JobResult = { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; diagnostics?: SubmitDiagnostics };
 export type BookingJob = {
   id: string; state: JobState; createdAt: string; updatedAt: string;
   steps: { step: BookingStep; note?: string; at: string }[];
@@ -42,8 +42,8 @@ export type JobsOptions = {
 type Entry = { job: BookingJob; booker: SevenRoomsBooker; timers: ReturnType<typeof setTimeout>[] };
 
 /**
- * The booking state machine. Owns every job, its browser session, its timers and its evidence
- * screenshot; the HTTP layer only translates requests into these calls.
+ * The booking state machine. Owns every job, its browser session and its timers;
+ * the HTTP layer only translates requests into these calls.
  */
 export class BookingJobs {
   private entries = new Map<string, Entry>();
@@ -63,8 +63,8 @@ export class BookingJobs {
     job.state = to; job.updatedAt = this.now().toISOString(); if (result) job.result = result;
     return true;
   }
-  private async finish(entry: Entry, to: JobState, result: JobResult, _evidence?: Buffer) {
-    if (!this.move(entry, to, { ...result, hasEvidence: false })) return;
+  private async finish(entry: Entry, to: JobState, result: JobResult) {
+    if (!this.move(entry, to, result)) return;
     for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
     await entry.booker.close();
     const { job } = entry;
@@ -75,8 +75,16 @@ export class BookingJobs {
     }
   }
 
+  /** Serializes start() so two near-simultaneous picks can't both run the cancel-then-insert and place two holds. */
+  private starting: Promise<unknown> = Promise.resolve();
+
   /** Phase 1: open the page, hold the table, fill the form, then wait for the diner. */
-  async start(request: BookingRequest, venue: Venue): Promise<BookingJob> {
+  start(request: BookingRequest, venue: Venue): Promise<BookingJob> {
+    const run = this.starting.then(() => this.startExclusive(request, venue));
+    this.starting = run.then(() => {}, () => {});
+    return run;
+  }
+  private async startExclusive(request: BookingRequest, venue: Venue): Promise<BookingJob> {
     // One live browser session per server: a new pick replaces a pending one and releases its hold.
     for (const entry of this.entries.values()) {
       if (entry.job.state === 'SUBMITTING') throw new ApiError(429, 'BUSY', 'A booking is being submitted right now. Wait for it to finish.');
@@ -94,7 +102,7 @@ export class BookingJobs {
     entry.timers.push(setTimeout(() => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'TIMEOUT', message: 'The booking browser did not finish preparing within 2 minutes. Nothing was submitted.' }); }, this.options.prepareTimeoutMs ?? 120_000));
     void entry.booker.prepare({ ...request, timezone: venue.timezone }).then(prepared => {
       if (job.state !== 'PREPARING') return;
-      if (prepared.status !== 'READY') { const noShot = ['CANCELLATION_FEE', 'PAYMENT_REQUIRED'].includes(prepared.code); void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }, noShot ? undefined : prepared.screenshot); return; }
+      if (prepared.status !== 'READY') { void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }); return; }
       const holdMs = Math.max(this.options.minHoldMs ?? 30_000, (prepared.holdSeconds ?? 300) * 1000 - (this.options.holdMarginMs ?? 20_000));
       job.prepared = { policy: prepared.policy, feeWarning: prepared.feeWarning, needsDiner: prepared.needsDiner, values: prepared.values, holdExpiresAt: new Date(this.now().getTime() + holdMs).toISOString() };
       for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
@@ -113,7 +121,7 @@ export class BookingJobs {
     for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
     this.move(entry, 'SUBMITTING');
     void entry.booker.confirm().then(result => {
-      void this.finish(entry, result.status === 'CONFIRMED' ? 'CONFIRMED' : 'FAILED', { status: result.status, code: result.code, message: result.message, reference: result.reference, policy: result.policy, pageUrl: result.pageUrl, diagnostics: result.diagnostics }, result.status === 'CONFIRMED' ? undefined : result.screenshot);
+      void this.finish(entry, result.status === 'CONFIRMED' ? 'CONFIRMED' : 'FAILED', { status: result.status, code: result.code, message: result.message, reference: result.reference, policy: result.policy, pageUrl: result.pageUrl, diagnostics: result.diagnostics });
     }).catch(error => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'UNEXPECTED', message: error instanceof Error ? error.message : 'Confirmation failed.' }); });
     return job;
   }
@@ -125,7 +133,7 @@ export class BookingJobs {
     return entry.job;
   }
 
-  /** Drops finished jobs (and their screenshots) after the retention window so memory stays flat. */
+  /** Drops finished jobs after the retention window so memory stays flat. */
   sweep() {
     const cutoff = this.now().getTime() - (this.options.retentionMs ?? 30 * 60_000);
     for (const [id, entry] of this.entries) if (terminal.includes(entry.job.state) && Date.parse(entry.job.updatedAt) < cutoff) this.entries.delete(id);
