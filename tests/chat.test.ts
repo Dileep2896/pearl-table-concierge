@@ -10,6 +10,12 @@ describe('intent parser', () => {
     expect(intent).toEqual({ neighborhood: 'West Village', partySize: 2, date: '2026-10-02', timeFrom: '19:00', timeTo: '21:00' });
     expect(missingFields(intent)).toEqual([]);
   });
+  it('reads spelled-out party sizes', () => {
+    expect(parseIntent('Dinner for four in SoMa this Saturday, 7-9', {}, now).partySize).toBe(4);
+    expect(parseIntent('a table for two on nob hill tomorrow at 7', {}, now).partySize).toBe(2);
+    expect(parseIntent('party of six friday 8pm', {}, now).partySize).toBe(6);
+    expect(parseIntent('table for 3 saturday', {}, now).partySize).toBe(3);
+  });
   it('keeps earlier details and applies corrections', () => {
     const first = parseIntent('4 people saturday around 8pm', {}, now);
     expect(first).toMatchObject({ partySize: 4, date: '2026-10-03', exactTime: '20:00', timeFrom: '19:30', timeTo: '21:30' });

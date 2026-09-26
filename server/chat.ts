@@ -32,8 +32,11 @@ export function parseIntent(message: string, previous: Intent = {}, now = new Da
   const neighborhood = detectNeighborhood(text);
   if (neighborhood) { intent.neighborhood = neighborhood; delete intent.unsupportedLocation; }
   else { const outside = detectUnsupportedLocation(text); if (outside) { intent.unsupportedLocation = outside; delete intent.neighborhood; } }
-  const party = text.match(/\b(?:table|party|reservation|booking)\s+(?:for|of)\s+(\d{1,2})\b/i) ?? text.match(/\b(\d{1,2})\s*(?:people|persons|guests|ppl|pax|of us|diners)\b/i) ?? text.match(/\bfor\s+(\d{1,2})\b(?!\s*(?:pm|am|:))/i);
-  if (party) { const size = Number(party[1]); if (size >= 1 && size <= 8) intent.partySize = size; }
+  // Party size accepts digits or the spelled-out numbers one–eight ("dinner for four", "a table for two").
+  const numWords: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8 };
+  const N = '(\\d{1,2}|one|two|three|four|five|six|seven|eight)';
+  const party = text.match(new RegExp(`\\b(?:table|party|reservation|booking)\\s+(?:for|of)\\s+${N}\\b`, 'i')) ?? text.match(new RegExp(`\\b${N}\\s*(?:people|persons|guests|ppl|pax|of us|diners)\\b`, 'i')) ?? text.match(new RegExp(`\\b(?:for|of)\\s+${N}\\b(?!\\s*(?:pm|am|:))`, 'i'));
+  if (party) { const size = numWords[party[1].toLowerCase()] ?? Number(party[1]); if (size >= 1 && size <= 8) intent.partySize = size; }
   const results = chrono.parse(text, now, { forwardDate: true });
   let timeSet = false;
   for (const result of results) {

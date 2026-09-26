@@ -6,7 +6,7 @@ import { Icon } from '../../ui/Icon';
 export function IntentBar() {
   const i = useStore(s => s.chat.intent);
   const chips = [
-    i.partySize && { k: 'p', icon: 'guests' as const, t: `${i.partySize} guests` },
+    i.partySize && { k: 'p', icon: 'guests' as const, t: `${i.partySize} ${i.partySize === 1 ? 'guest' : 'guests'}` },
     i.neighborhood && { k: 'n', icon: 'pin' as const, t: i.neighborhood },
     i.date && { k: 'd', icon: 'clock' as const, t: shortDay(i.date) },
     (i.exactTime || i.timeFrom) && { k: 't', icon: 'clock' as const, t: i.exactTime ? timeLabel(i.exactTime) : `${timeLabel(i.timeFrom!)}–${timeLabel(i.timeTo!)}` },
