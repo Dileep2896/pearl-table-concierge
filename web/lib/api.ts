@@ -12,7 +12,7 @@ export type BookingJob = {
   id: string; state: JobState; createdAt?: string; updatedAt?: string; steps: BookingStep[];
   request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact };
   prepared?: { policy?: string; feeWarning?: string; values?: Record<string, string>; holdExpiresAt: string };
-  verification?: { requestedAt: string; expiresAt: string; passedAt?: string };
+  verification?: { requestedAt: string; expiresAt: string; passedAt?: string; liveViewUrl?: string };
   result?: JobResult;
 };
 export type LedgerEntry = { id: string; confirmedAt: string; venue: string; venueName: string; city: string; date: string; time: string; partySize: number; reference?: string; pageUrl?: string };

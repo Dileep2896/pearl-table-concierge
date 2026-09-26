@@ -1,7 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type BrowserContextOptions } from 'playwright';
 import { log } from './logger';
 
-export interface ContextSource { context(options?: BrowserContextOptions): Promise<BrowserContext>; close?(): Promise<void>; }
+export interface ContextSource { context(options?: BrowserContextOptions): Promise<BrowserContext>; close?(): Promise<void>; /** An interactive live-view URL for the (remote) browser behind this context, if any. */ liveView?(context: BrowserContext): Promise<string | undefined>; }
 
 /**
  * One Chromium process for the whole server, launched on first use and relaunched if it dies.

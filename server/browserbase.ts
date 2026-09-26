@@ -11,6 +11,7 @@ import { log } from './logger';
 export class BrowserbaseSource implements ContextSource {
   private bb: Browserbase;
   private projectId?: string;
+  private sessions = new WeakMap<BrowserContext, string>();
   constructor(private options: { apiKey: string; projectId?: string; proxies?: boolean; solveCaptchas?: boolean }) {
     this.bb = new Browserbase({ apiKey: options.apiKey });
     this.projectId = options.projectId;
@@ -50,8 +51,15 @@ export class BrowserbaseSource implements ContextSource {
     const browser = await chromium.connectOverCDP(session.connectUrl, { timeout: 30_000 });
     // Browserbase hands back one ready context; close the connection (which ends the session) when we're done with it.
     const context = browser.contexts()[0] ?? await browser.newContext(options);
+    this.sessions.set(context, session.id);
     context.once('close', () => { void browser.close().catch(() => {}); });
     return context;
+  }
+
+  /** Browserbase's interactive live view of the cloud browser — embeddable so the diner can tick the captcha. */
+  async liveView(context: BrowserContext): Promise<string | undefined> {
+    const id = this.sessions.get(context); if (!id) return undefined;
+    try { const live = await this.bb.sessions.debug(id); return live.debuggerFullscreenUrl; } catch { return undefined; }
   }
 
   async close() { /* sessions end when their context closes */ }

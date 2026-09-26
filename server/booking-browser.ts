@@ -47,7 +47,7 @@ type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bo
  */
 export class SevenRoomsBooker {
   private session?: Session;
-  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number; /** True for a remote browser (Browserbase/CDP): no local window to reveal; a captcha solve arrives in the background. */ remote?: boolean } = {}) {}
+  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number; /** True for a remote browser (Browserbase/CDP). */ remote?: boolean; /** Interactive live-view URL for the remote browser, so the diner can tick the captcha in-app. */ liveView?: (context: BrowserContext) => Promise<string | undefined>; /** Reports the live-view URL when human verification starts. */ onVerification?: (liveViewUrl?: string) => void } = {}) {}
   private get contexts(): ContextSource { return this.options.contexts ?? (this.options.contexts = new BrowserPool()); }
   private step(step: BookingStep, note?: string) { this.options.onStep?.(step, note); }
   get ready() { return Boolean(this.session); }
@@ -148,8 +148,11 @@ export class SevenRoomsBooker {
         // Remote browser (Browserbase): the solve arrives in the background — wait for the token and resubmit.
         // Local browser: only wait if a checkbox is actually on screen for the diner to tick.
         if (this.options.remote || await this.checkboxShowing(page)) {
-          this.step('SUBMITTING', this.options.remote ? 'solving verification' : 'human verification needed');
-          log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: Boolean(this.options.remote) });
+          // Remote (Browserbase): the diner ticks the checkbox in an embedded live view. Local: reveal the window.
+          const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
+          this.step('SUBMITTING', 'human verification needed');
+          this.options.onVerification?.(liveViewUrl);
+          log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: Boolean(this.options.remote), liveView: Boolean(liveViewUrl) });
           if (!this.options.remote) {
             await this.revealWindow(session).catch(() => {});
             await page.bringToFront().catch(() => {});

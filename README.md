@@ -72,7 +72,7 @@ BROWSERBASE_API_KEY=bb_live_...
 
 Then `npm run demo` runs in `auto` mode against a remote Browserbase session per booking — no window, deployable. The key alone is enough (the project resolves from it).
 
-**Free plan caveat (important):** proxies and captcha solving are paid. On the free plan the session runs but has a datacenter IP, so SevenRooms' reCAPTCHA will usually reject the submit — the booking fails and you fall back to handoff. To actually clear reCAPTCHA you need the Developer plan and `BROWSERBASE_PROXIES=1` (add `BROWSERBASE_SOLVE_CAPTCHAS=1` for stepped-up challenges). This route drives an automated booking, subject to SevenRooms' terms; the clean path is a SevenRooms partnership.
+**How reCAPTCHA is handled:** Pearl fills the form on the Browserbase cloud browser. If reCAPTCHA challenges on submit, Pearl embeds Browserbase's live view of that cloud browser in the app and asks you to tick "I'm not a robot" there — a real human tick, in-app, no paid captcha-solver and no separate window. Pearl detects the token and submits. This can work on the free plan when reCAPTCHA offers the checkbox. If the datacenter IP scores too low to even offer one, set `BROWSERBASE_PROXIES=1` (paid) for a residential IP. This drives an automated booking, subject to SevenRooms' terms; the clean path is a SevenRooms partnership.
 
 ## Booking modes
 
