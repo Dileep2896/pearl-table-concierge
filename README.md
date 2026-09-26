@@ -35,7 +35,8 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `PEARL_HEADLESS` | unset | `1` hides the booking browser. A hidden browser cannot pass SevenRooms' reCAPTCHA, so leave it off for real bookings |
 | `PEARL_BROWSER_VISIBLE` | unset | By default the booking window launches off-screen and only appears if a reCAPTCHA checkbox is needed. `1` keeps it on-screen throughout |
 | `PEARL_BROWSER_CHANNEL` | unset | `chrome` uses the installed Google Chrome instead of Playwright's Chromium |
-| `PEARL_BROWSER_CDP_URL` | unset | Auto mode connects to a remote browser over CDP (your own headed Chrome on a VM, or a managed browser) instead of launching locally. This is how to run auto mode on a deployed server; whether it passes reCAPTCHA depends on that browser's IP reputation and stealth, not on Pearl |
+| `PEARL_BROWSER_CDP_URL` | unset | Auto mode connects to a remote browser over CDP instead of launching locally |
+| `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID` | unset | Run auto mode on [Browserbase](https://browserbase.com): a fresh remote session per booking with residential proxies and captcha solving. Setting both switches the default booking mode to `auto` and needs no local browser, so it works on a deployed server. Pearl fills and submits; Browserbase supplies the IP and solves the reCAPTCHA |
 | `PEARL_HUMAN_SOLVE_MS` | 120000 | How long Pearl waits for you to tick the reCAPTCHA checkbox |
 | `PEARL_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
@@ -58,6 +59,16 @@ The booking driver test runs Chromium against a local stand-in for the widget, s
 ## Diner profile
 
 The confirm step auto-fills from a local profile stored at `.local/profile.json` (git-ignored, created on first save). Edit it from the "Edit" link in the page header, or by saving changed details on the confirm form. It is sent only to the restaurant's SevenRooms booking form when you confirm a table. `PEARL_DEMO_PROFILE=/path/to/profile.json` overrides the location.
+
+## Deploy with auto (Browserbase)
+
+Set `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` (from your Browserbase dashboard) and Pearl runs in `auto` mode against a remote Browserbase session per booking — proxies and captcha solving on — so it fills and submits server-side with no window:
+
+```bash
+BROWSERBASE_API_KEY=bb_... BROWSERBASE_PROJECT_ID=... npm run demo
+```
+
+Note: Browserbase's proxies and captcha solving are a paid managed service (a free tier exists) and this route drives an automated booking, which is subject to SevenRooms' terms. The fully clean path to server-side auto is a SevenRooms partnership.
 
 ## Booking modes
 

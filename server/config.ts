@@ -24,6 +24,7 @@ export type Config = {
   browserChannel?: string;
   /** Connect auto-mode bookings to a remote browser (CDP ws:// or http:// endpoint) instead of launching locally. */
   browserCdpUrl?: string;
+  browserbase?: { apiKey: string; projectId: string };
   humanSolveMs: number;
   browserOffscreen: boolean;
   /** 'auto' drives a server browser (local); 'handoff' opens SevenRooms in the diner's own browser (deployable). */
@@ -57,10 +58,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     headless: env.PEARL_HEADLESS === '1',
     browserChannel: env.PEARL_BROWSER_CHANNEL || undefined,
     browserCdpUrl: env.PEARL_BROWSER_CDP_URL || undefined,
+    browserbase: env.BROWSERBASE_API_KEY && env.BROWSERBASE_PROJECT_ID ? { apiKey: env.BROWSERBASE_API_KEY, projectId: env.BROWSERBASE_PROJECT_ID } : undefined,
     humanSolveMs: num(env.PEARL_HUMAN_SOLVE_MS, 120_000),
     // The booking window stays off-screen while Pearl fills the form; it only comes into view if a reCAPTCHA checkbox appears.
     browserOffscreen: !env.PEARL_BROWSER_VISIBLE && env.PEARL_HEADLESS !== '1',
     // Default to the in-app browser handoff (no separate window, deployable). PEARL_BOOKING_MODE=auto drives a local server browser instead.
-    bookingMode: env.PEARL_BOOKING_MODE === 'auto' ? 'auto' : 'handoff',
+    bookingMode: env.PEARL_BOOKING_MODE === 'auto' || (env.PEARL_BOOKING_MODE !== 'handoff' && env.BROWSERBASE_API_KEY && env.BROWSERBASE_PROJECT_ID) ? 'auto' : 'handoff',
   };
 }

@@ -47,7 +47,7 @@ type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bo
  */
 export class SevenRoomsBooker {
   private session?: Session;
-  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number } = {}) {}
+  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number; /** True for a remote browser (Browserbase/CDP): no local window to reveal; a captcha solve arrives in the background. */ remote?: boolean } = {}) {}
   private get contexts(): ContextSource { return this.options.contexts ?? (this.options.contexts = new BrowserPool()); }
   private step(step: BookingStep, note?: string) { this.options.onStep?.(step, note); }
   get ready() { return Boolean(this.session); }
@@ -145,13 +145,16 @@ export class SevenRoomsBooker {
       // visible window a person can tick it; Pearl watches for the solved token and presses Submit again.
       if (outcome === 'error' && this.options.humanSolveMs && diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line))) {
         await page.waitForTimeout(1500);
-        if (await this.checkboxShowing(page)) {
-          this.step('SUBMITTING', 'human verification needed');
-          log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs });
-          // Now the diner needs to see the window: move it on-screen, focus it, scroll the checkbox in.
-          await this.revealWindow(session).catch(() => {});
-          await page.bringToFront().catch(() => {});
-          await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+        // Remote browser (Browserbase): the solve arrives in the background — wait for the token and resubmit.
+        // Local browser: only wait if a checkbox is actually on screen for the diner to tick.
+        if (this.options.remote || await this.checkboxShowing(page)) {
+          this.step('SUBMITTING', this.options.remote ? 'solving verification' : 'human verification needed');
+          log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: Boolean(this.options.remote) });
+          if (!this.options.remote) {
+            await this.revealWindow(session).catch(() => {});
+            await page.bringToFront().catch(() => {});
+            await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+          }
           outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
         }
       }

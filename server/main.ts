@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app';
 import { loadConfig } from './config';
 import { BrowserPool } from './browser-pool';
+import { BrowserbaseSource } from './browserbase';
 import { SevenRoomsBooker } from './booking-browser';
 import { BookingJobs } from './jobs';
 import { BookingLedger } from './ledger';
@@ -11,22 +12,26 @@ import { CodexQueue } from './codex';
 import { log } from './logger';
 
 const config = loadConfig();
-const pool = new BrowserPool({ headless: config.headless, channel: config.browserChannel, cdpUrl: config.browserCdpUrl, args: config.browserOffscreen && !config.browserCdpUrl ? ['--window-position=-2400,0', '--window-size=460,940'] : undefined });
+// Auto mode's browser: Browserbase (remote, proxies + captcha solving) if configured, a remote CDP endpoint if given, else a local window.
+const contexts = config.browserbase
+  ? new BrowserbaseSource(config.browserbase)
+  : new BrowserPool({ headless: config.headless, channel: config.browserChannel, cdpUrl: config.browserCdpUrl, args: config.browserOffscreen && !config.browserCdpUrl ? ['--window-position=-2400,0', '--window-size=460,940'] : undefined });
+const remote = Boolean(config.browserbase || config.browserCdpUrl);
 const ledger = new BookingLedger(config.ledgerPath);
 const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
 const jobs = new BookingJobs({
-  booker: onStep => new SevenRoomsBooker({ contexts: pool, onStep, requireFreeCancellation: config.requireFreeCancellation, humanSolveMs: config.headless ? undefined : config.humanSolveMs }),
+  booker: onStep => new SevenRoomsBooker({ contexts, onStep, requireFreeCancellation: config.requireFreeCancellation, remote, humanSolveMs: remote || !config.headless ? config.humanSolveMs : undefined }),
   ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs, humanSolveMs: config.headless ? undefined : config.humanSolveMs,
 });
 const app = createApp({
   useCodex: config.useCodex, bookingMode: config.bookingMode, codex: codex.run,
   availability: new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs }),
   jobs, ledger, profiles: new ProfileStore(config.profilePath),
-  health: () => ({ browser: pool.status(), codexQueue: codex.status() }),
+  health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, codexQueue: codex.status() }),
 });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
-  console.log(`Pearl demo API: http://${config.host}:${info.port} · chat via ${config.useCodex ? 'Codex CLI (PEARL_DEMO_AI=off for the parser)' : 'parser'} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? ' (drives a local browser)' : ' (in-app SevenRooms handoff)'}`);
+  console.log(`Pearl demo API: http://${config.host}:${info.port} · chat via ${config.useCodex ? 'Codex CLI' : 'parser'} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
   log('info', 'api_started', { port: info.port, codex: config.useCodex, dataDir: config.dataDir });
 });
 
@@ -37,7 +42,7 @@ async function shutdown(signal: string) {
   log('info', 'api_stopping', { signal });
   server.close();
   await jobs.close().catch(() => {});
-  await pool.close().catch(() => {});
+  await contexts.close?.().catch(() => {});
   process.exit(0);
 }
 process.once('SIGINT', () => { void shutdown('SIGINT'); });
