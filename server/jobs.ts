@@ -14,7 +14,7 @@ export type BookingJob = {
   /** Live view of the remote (Browserbase) browser, so the diner can watch and tick the captcha. */
   liveViewUrl?: string;
   /** Present once the form is filled: what Pearl typed and what the restaurant's policy says. */
-  prepared?: { policy?: string; feeWarning?: string; values?: Record<string, string>; holdExpiresAt: string };
+  prepared?: { policy?: string; feeWarning?: string; needsDiner?: 'card' | 'login'; values?: Record<string, string>; holdExpiresAt: string };
   /** Set while the restaurant's page is waiting for the diner to tick the reCAPTCHA checkbox. */
   verification?: { requestedAt: string; expiresAt: string; passedAt?: string; liveViewUrl?: string };
   result?: JobResult;
@@ -96,7 +96,7 @@ export class BookingJobs {
       if (job.state !== 'PREPARING') return;
       if (prepared.status !== 'READY') { const noShot = ['CANCELLATION_FEE', 'PAYMENT_REQUIRED'].includes(prepared.code); void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }, noShot ? undefined : prepared.screenshot); return; }
       const holdMs = Math.max(this.options.minHoldMs ?? 30_000, (prepared.holdSeconds ?? 300) * 1000 - (this.options.holdMarginMs ?? 20_000));
-      job.prepared = { policy: prepared.policy, feeWarning: prepared.feeWarning, values: prepared.values, holdExpiresAt: new Date(this.now().getTime() + holdMs).toISOString() };
+      job.prepared = { policy: prepared.policy, feeWarning: prepared.feeWarning, needsDiner: prepared.needsDiner, values: prepared.values, holdExpiresAt: new Date(this.now().getTime() + holdMs).toISOString() };
       for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
       this.move(entry, 'READY');
       const expiry = setTimeout(() => { void this.finish(entry, 'EXPIRED', { status: 'EXPIRED', code: 'HOLD_EXPIRED', message: 'The restaurant’s 5-minute hold lapsed before you confirmed. Pick the time again.' }); }, holdMs);

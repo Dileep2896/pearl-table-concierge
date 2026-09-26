@@ -20,6 +20,8 @@ export function JobCard() {
   const confirm = useStore(s => s.confirmBooking); const cancel = useStore(s => s.cancelBooking);
   const dismiss = useStore(s => s.dismissJob); const retry = useStore(s => s.retryJob);
   const needsHuman = Boolean(job?.state === 'SUBMITTING' && job.verification && !job.verification.passedAt);
+  // A card- or login-required venue Pearl filled but can't finish: the diner completes it in the live view.
+  const needsDiner = job?.prepared?.needsDiner;
   useNow(Boolean(job && (job.state === 'READY' || needsHuman)));
   useEffect(() => {
     if (!needsHuman) { document.title = 'Pearl — Table concierge'; return; }
@@ -40,6 +42,7 @@ export function JobCard() {
 
       {job.liveViewUrl && ['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) ? <div className="live-view">
         {needsHuman ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>One tick from you.</strong> Tick “I’m not a robot” in the browser below — Pearl is doing the rest.</span></p>
+          : needsDiner && (job.state === 'READY' || job.state === 'SUBMITTING') ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>{needsDiner === 'card' ? 'Your card, your tap.' : 'Sign in to finish.'}</strong> {needsDiner === 'card' ? 'Pearl filled everything else. Add your card in the browser below and book — Pearl records the confirmation.' : 'Pearl can’t sign in for you. Sign in and book in the browser below — Pearl records the confirmation.'}</span></p>
           : <p className="live-label"><Icon name="lock" size={13} /> Watching Pearl book on a secure cloud browser{job.state === 'SUBMITTING' ? ' · placing your reservation' : job.state === 'READY' ? ' · ready for you' : '…'}</p>}
         <iframe className="live-frame tall" src={job.liveViewUrl} title="Live booking browser" allow="clipboard-write" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       </div> : (job.state === 'PREPARING' || job.state === 'SUBMITTING') && <Stepper job={job} />}
@@ -48,8 +51,8 @@ export function JobCard() {
       {job.state === 'READY' && job.prepared && <div className="ready">
         <p className="who">Filling in as <strong>{job.prepared.values?.firstName ?? job.request.contact.firstName} {job.prepared.values?.lastName ?? job.request.contact.lastName}</strong> · {job.prepared.values?.emailAddress ?? job.request.contact.email}</p>
         {job.prepared.feeWarning ? <div className="notice warn"><Icon name="warn" size={16} /><span><strong>Cancellation fee.</strong> {job.prepared.feeWarning}</span></div> : job.prepared.policy && <p className="muted policy">“{job.prepared.policy}”</p>}
-        <p className="muted quiet">The table is held for you. Nothing is placed until you confirm.{job.prepared.feeWarning ? ' By confirming you accept the restaurant’s fee policy.' : ''}</p>
-        <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Release</Button><Button onClick={() => void confirm()}><Icon name="check" size={16} /> {job.prepared.feeWarning ? 'Accept & confirm' : 'Confirm reservation'}</Button></div>
+        <p className="muted quiet">{needsDiner === 'card' ? 'Tap below, then add your card in the browser above and press Book. Pearl watches for the confirmation and never sees your card.' : needsDiner === 'login' ? 'Tap below, then sign in and book in the browser above. Pearl watches for the confirmation and never sees your password.' : `The table is held for you. Nothing is placed until you confirm.${job.prepared.feeWarning ? ' By confirming you accept the restaurant’s fee policy.' : ''}`}</p>
+        <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Release</Button><Button onClick={() => void confirm()}>{needsDiner ? <><Icon name="lock" size={16} /> {needsDiner === 'card' ? 'I’ll add my card' : 'I’ll sign in'}</> : <><Icon name="check" size={16} /> {job.prepared.feeWarning ? 'Accept & confirm' : 'Confirm reservation'}</>}</Button></div>
       </div>}
 
       {job.result && job.state !== 'READY' && <p className={`job-message ${job.state === 'CONFIRMED' ? 'ok' : job.state === 'FAILED' || job.state === 'EXPIRED' ? 'bad' : ''}`}>{job.result.message}</p>}

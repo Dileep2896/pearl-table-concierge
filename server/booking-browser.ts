@@ -14,7 +14,7 @@ export type BookingRequest = z.input<typeof bookingRequestSchema>;
 
 export type BookingStep = 'OPENING' | 'SELECTING_TIME' | 'HOLDING' | 'FILLING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED';
 /** `screenshot` is only set on FAILED: the restaurant's page at the moment Pearl stopped, as evidence for the diner. */
-export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; /** Set when the policy mentions a cancellation fee: the diner decides whether to go ahead. */ feeWarning?: string; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
+export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; /** Set when the policy mentions a cancellation fee: the diner decides whether to go ahead. */ feeWarning?: string; /** Set when the checkout needs the diner to add a card or sign in: on a remote browser they finish it in the live view. */ needsDiner?: 'card' | 'login'; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
 /** What happened on the wire after Submit: enough to explain a rejection without re-running it. */
 export type SubmitDiagnostics = { finalUrl: string; requests: { method: string; url: string; status?: number; body?: string; failure?: string }[]; console: string[]; pageText: string };
 export type BookingResult = { status: 'CONFIRMED' | 'FAILED'; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; pageText?: string; screenshot?: Buffer; response?: unknown; diagnostics?: SubmitDiagnostics };
@@ -37,7 +37,7 @@ export function extractReference(source: unknown, pageText = ''): string | undef
   return text?.[1];
 }
 
-type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bookStatus?: number; holdResponse?: unknown; policy: string; policyShot?: Buffer };
+type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bookStatus?: number; holdResponse?: unknown; policy: string; policyShot?: Buffer; /** Set when the diner must finish a card or login step in the live view. */ needsDiner?: 'card' | 'login' };
 
 /**
  * Drives the public SevenRooms guest widget exactly as a diner would, in two phases.
@@ -86,32 +86,36 @@ export class SevenRoomsBooker {
       this.step('HOLDING');
       if (await select.isVisible().catch(() => false)) await select.click();
       await checkout.waitFor({ state: 'visible', timeout: 20000 }).catch(() => { throw new BookingFailure('NO_CHECKOUT', 'The checkout form did not appear. The table may have just been taken.'); });
-      if (await this.asksForCard(page)) throw new BookingFailure('PAYMENT_REQUIRED', 'This restaurant asks for a card at checkout. Pearl does not enter payment details.');
-      if (await page.locator('input[type="password"]').filter({ visible: true }).count() > 0) throw new BookingFailure('LOGIN_REQUIRED', 'This restaurant requires a SevenRooms login. Pearl stopped.');
+      // A cancellation fee is a heads-up, not a wall: unless strict mode is set, prepare the table and let the diner decide at confirm.
       ({ text: session.policy, screenshot: session.policyShot } = await this.readPolicy(page));
       const hasFee = Boolean(session.policy) && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy);
-      // A cancellation fee is a heads-up, not a wall: unless strict mode is set, prepare the table and let the diner decide at confirm.
       if (hasFee && this.options.requireFreeCancellation === true) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee, so Pearl stopped before booking.');
       const feeWarning = hasFee ? session.policy : undefined;
+      // A login replaces the guest form, so detect it before filling. A card is an extra field alongside the
+      // guest form, so fill first — then a card-required venue only needs the card itself from the diner.
+      const loginNeeded = (await page.locator('input[type="password"]').filter({ visible: true }).count()) > 0;
       this.step('FILLING');
-      await page.locator('input[name="firstName"]').fill(input.contact.firstName);
-      await page.locator('input[name="lastName"]').fill(input.contact.lastName);
-      await page.locator('input[name="emailAddress"]').fill(input.contact.email);
-      const phone = page.locator('input[name="phoneNumber"]');
-      await phone.click(); await phone.fill(''); await phone.pressSequentially(input.contact.phone.replace(/^\+?1/, '').replace(/\D/g, ''), { delay: 20 });
-      const policyBox = page.locator('#agreedToBookingPolicy');
-      if (await policyBox.count() > 0 && !(await policyBox.isChecked())) {
-        await policyBox.check({ force: true, timeout: 4000 }).catch(async () => {
-          // Remote browsers sometimes don't register .check(); click the box directly, then via JS as a last resort.
-          await policyBox.click({ force: true, timeout: 3000 }).catch(() => {});
-          if (!(await policyBox.isChecked().catch(() => true))) await policyBox.evaluate((el: HTMLInputElement) => { if (!el.checked) el.click(); }).catch(() => {});
-        });
+      if (!loginNeeded) await this.fillGuestForm(page, input.contact);
+      const needsDiner: 'card' | 'login' | undefined = loginNeeded ? 'login' : (await this.asksForCard(page)) ? 'card' : undefined;
+      const values = Object.fromEntries(await page.locator('input[name="firstName"], input[name="lastName"], input[name="emailAddress"], input[name="phoneNumber"]').evaluateAll(els => els.map(el => [(el as HTMLInputElement).name, (el as HTMLInputElement).value])));
+      const holdSeconds = Number((session.holdResponse as { data?: { hold_duration_sec?: number } } | undefined)?.data?.hold_duration_sec) || 300;
+      if (needsDiner) {
+        // On a remote browser (Browserbase) the diner finishes the card/login in the embedded live view and Pearl
+        // records the result. Locally there is no in-app browser, so Pearl stops and offers the SevenRooms handoff.
+        if (!(this.options.remote && this.options.liveView)) throw new BookingFailure(needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', needsDiner === 'card' ? 'This restaurant asks for a card at checkout. Pearl does not enter payment details.' : 'This restaurant requires a SevenRooms login. Pearl stopped.');
+        session.needsDiner = needsDiner;
+        this.session = session;
+        void this.options.liveView(session.context).then(u => this.options.onLiveView?.(u)).catch(() => {});
+        log('info', 'booking_prepared_needs_diner', { venue: input.venue, needsDiner, ms: Math.round(performance.now() - started), holdSeconds });
+        this.step('READY', `needs ${needsDiner}`);
+        const message = needsDiner === 'card'
+          ? 'This restaurant asks for a card at checkout. Pearl filled everything else — add your card in the live browser above and book there, then Pearl records the confirmation.'
+          : 'This restaurant needs a SevenRooms sign-in. Do it in the live browser above and book there — Pearl records the confirmation.';
+        return { status: 'READY', code: 'READY', message, policy: session.policy, feeWarning, needsDiner, values, holdSeconds, pageUrl: page.url() };
       }
       const submit = page.locator('[data-test="checkout-button-complete"]');
       if (await submit.isDisabled()) throw new BookingFailure('SUBMIT_DISABLED', 'The widget kept Submit disabled after filling the form.');
       await page.waitForTimeout(400);
-      const values = Object.fromEntries(await page.locator('input[name="firstName"], input[name="lastName"], input[name="emailAddress"], input[name="phoneNumber"]').evaluateAll(els => els.map(el => [(el as HTMLInputElement).name, (el as HTMLInputElement).value])));
-      const holdSeconds = Number((session.holdResponse as { data?: { hold_duration_sec?: number } } | undefined)?.data?.hold_duration_sec) || 300;
       this.session = session;
       log('info', 'booking_prepared', { venue: input.venue, ms: Math.round(performance.now() - started), holdSeconds });
       this.step('READY', `held ${holdSeconds}s`);
@@ -145,6 +149,23 @@ export class SevenRoomsBooker {
     const onConsole = (message: import('playwright').ConsoleMessage) => { if (['error', 'warning'].includes(message.type())) diagnostics.console.push(message.text().slice(0, 200)); };
     page.on('request', onRequest); page.on('response', onResponse); page.on('requestfailed', onFailed); page.on('console', onConsole);
     try {
+      // A card- or login-required venue: Pearl filled everything it can, and the diner completes the sensitive
+      // step in the live view (adds the card / signs in, then books). Pearl never presses Submit here — it
+      // watches the same session for the widget's confirmation and records it.
+      if (session.needsDiner) {
+        const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
+        this.step('SUBMITTING', session.needsDiner === 'card' ? 'add your card in the live browser and book' : 'sign in and book in the live browser');
+        this.options.onVerification?.(liveViewUrl);
+        const budget = Math.max(this.options.humanSolveMs ?? 0, 180_000);
+        log('info', 'booking_diner_finishing', { needsDiner: session.needsDiner, ms: budget, liveView: Boolean(liveViewUrl) });
+        const outcome = await this.awaitOutcome(page, session, budget);
+        const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
+        diagnostics.finalUrl = page.url(); diagnostics.pageText = pageText.slice(0, 1500);
+        if (outcome !== 'confirmed') throw new BookingFailure(session.needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', session.needsDiner === 'card' ? 'Pearl did not see a confirmation after the card step. Nothing was booked. Finish on SevenRooms if the browser above did not complete it.' : 'Pearl did not see a confirmation after the sign-in step. Nothing was booked. Finish on SevenRooms if needed.');
+        const dinerRef = extractReference(session.bookResponse, pageText) ?? (/is_success=true/.test(page.url()) ? 'confirmed' : undefined);
+        this.step('CONFIRMED', dinerRef);
+        return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${dinerRef ? ` (${dinerRef})` : ''}. A confirmation email is on its way.`, reference: dinerRef, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), response: session.bookResponse ?? session.holdResponse, diagnostics };
+      }
       this.step('SUBMITTING');
       const submit = page.locator('[data-test="checkout-button-complete"]');
       if (await submit.isDisabled()) throw new BookingFailure('SUBMIT_DISABLED', 'The widget kept Submit disabled.');
@@ -209,6 +230,22 @@ export class SevenRoomsBooker {
   /** Closes this booking's browser context, which also releases the widget's hold. Safe to call any time. */
   async close() { const session = this.session; this.session = undefined; await session?.context.close().catch(() => {}); }
 
+  /** Fills the four guest fields and accepts the cancellation policy on the checkout form. */
+  private async fillGuestForm(page: Page, contact: Contact) {
+    await page.locator('input[name="firstName"]').fill(contact.firstName);
+    await page.locator('input[name="lastName"]').fill(contact.lastName);
+    await page.locator('input[name="emailAddress"]').fill(contact.email);
+    const phone = page.locator('input[name="phoneNumber"]');
+    await phone.click(); await phone.fill(''); await phone.pressSequentially(contact.phone.replace(/^\+?1/, '').replace(/\D/g, ''), { delay: 20 });
+    const policyBox = page.locator('#agreedToBookingPolicy');
+    if (await policyBox.count() > 0 && !(await policyBox.isChecked())) {
+      await policyBox.check({ force: true, timeout: 4000 }).catch(async () => {
+        // Remote browsers sometimes don't register .check(); click the box directly, then via JS as a last resort.
+        await policyBox.click({ force: true, timeout: 3000 }).catch(() => {});
+        if (!(await policyBox.isChecked().catch(() => true))) await policyBox.evaluate((el: HTMLInputElement) => { if (!el.checked) el.click(); }).catch(() => {});
+      });
+    }
+  }
   /**
    * Stripe.js mounts hidden utility iframes on every SevenRooms checkout, so only a rendered card frame
    * (or visible card / postal-code inputs) means the venue actually wants a card.

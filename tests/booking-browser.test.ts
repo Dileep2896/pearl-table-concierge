@@ -97,11 +97,26 @@ describe('SevenRoomsBooker', () => {
     expect(result.diagnostics?.console.some(l => /recaptcha/.test(l))).toBe(true);
     await browser.close();
   });
-  it('stops before filling when the checkout renders a card frame', async () => {
+  it('stops with PAYMENT_REQUIRED at a card checkout when there is no live view to finish in', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
     const booker = new SevenRoomsBooker({ contexts: pool(record, { checkout: checkoutPage.replace(hiddenStripe, hiddenStripe + visibleStripe) }) });
     const result = await booker.book(request);
     expect(result.status).toBe('FAILED'); expect(result.code).toBe('PAYMENT_REQUIRED'); expect(record.posts.map(p => p.url)).toEqual(['/api-yoa/dining/hold/add']);
+  });
+  it('on a remote browser, prepares a card checkout to READY (needsDiner) and lets the diner book it in the live view', async () => {
+    const record = { posts: [] as { url: string; body: string | null }[] }; const liveUrls: (string | undefined)[] = [];
+    // The diner's action in the live view: once Pearl has filled and ticked the policy, book (as the diner would).
+    const cardCheckout = checkoutPage.replace(hiddenStripe, hiddenStripe + visibleStripe)
+      .replace('</body>', "<script>var _t=setInterval(function(){var b=document.getElementById('agreedToBookingPolicy');if(b&&b.checked){clearInterval(_t);setTimeout(function(){var s=document.querySelector('[data-test=checkout-button-complete]');if(s)s.click();},500);}},100);</script></body>");
+    const booker = new SevenRoomsBooker({ contexts: pool(record, { checkout: cardCheckout }), remote: true, liveView: async () => 'https://live.example/session', onLiveView: u => liveUrls.push(u), humanSolveMs: 5000 });
+    const prepared = await booker.prepare(request);
+    expect(prepared.status, prepared.message).toBe('READY'); expect(prepared.needsDiner).toBe('card');
+    expect(record.posts.map(p => p.url)).toEqual(['/api-yoa/dining/hold/add']); // Pearl held the table but did not book
+    expect(liveUrls).toContain('https://live.example/session');
+    const result = await booker.confirm();
+    expect(result.status, result.message).toBe('CONFIRMED'); expect(result.reference).toBe('ZX4Q9K');
+    // The single book call came from the diner's action in the live view, not from Pearl pressing Submit.
+    expect(record.posts.filter(p => p.url.endsWith('/book'))).toHaveLength(1);
   });
   it('warns about a cancellation fee by default and refuses only in strict mode', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
