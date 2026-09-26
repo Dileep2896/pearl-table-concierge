@@ -10,12 +10,12 @@ A review of the demo as first extracted from the monorepo, what was wrong with i
 | 2 | A fresh Chromium was launched for every booking (~1.5 s) and closed after. | Slow tap-to-hold; memory churn; no shutdown hook. | `server/browser-pool.ts`: one browser per server, lazily launched, relaunched if it dies; each booking gets an isolated context (~100 ms). Graceful shutdown releases holds and closes the browser. |
 | 3 | Availability was refetched from SevenRooms on every chat turn with unbounded parallelism. | Hammering a third party; risk of rate limiting during a demo. | `server/availability.ts`: 20 s cache keyed by query, fan-out capped at 6 concurrent requests, failures not cached, timings logged. |
 | 4 | Codex ran one process per request with no limit and no memory. | Concurrent turns slow each other; retries pay twice. | `CodexQueue`: calls serialised, identical prompts answered from a 5-minute cache, overload rejected cleanly so the parser takes over. |
-| 5 | Finished jobs were never removed, and a 300 KB screenshot was embedded in the job JSON and re-sent on every poll. | Memory grows forever; polling gets heavy. | Jobs swept 30 min after finishing. Evidence served once from `/api/book/:id/evidence.png`; the job carries only `hasEvidence`. |
+| 5 | Finished jobs were never removed, and a 300 KB screenshot was embedded in the job JSON and re-sent on every poll. | Memory grows forever; polling gets heavy. | Jobs swept 30 min after finishing. Screenshots were first moved behind a served endpoint and later dropped entirely (see "Since this review"); a stop now explains itself in words and, where possible, offers a live-view or SevenRooms finish. |
 | 6 | Confirmed bookings lived only in memory. | A restart lost the demo's proof of work. | `server/ledger.ts`: confirmed bookings appended to `.local/bookings.json` (no contact details), listed at `/api/bookings` and in the page. |
 | 7 | Env vars were read wherever they were used; no logger; no error or not-found handlers; unbounded request bodies. | Inconsistent errors, stack traces to clients, hard to operate. | `server/config.ts` (one typed config), `server/logger.ts` (JSON lines with request ids and timings), `ApiError` with an `onError` mapping, JSON 404s, 64 KB body limit. |
 | 8 | The whole UI was one 160-line component with `setInterval` polling. | Hard to extend; polling never slowed down. | `web/hooks` (`useProfile`, `useBookingJob`) and `web/components` (`Results`, `JobPanel`, `ContactFields`, `Bookings`). Polling backs off to 3 s while a hold waits. |
 | 9 | `/api/health` said nothing about the browser or the model. | No way to see readiness before a demo. | Health reports job counts, browser pool status and the Codex queue. |
-| 10 | Tests covered routes but not caching, queueing, retention or persistence. | Regressions in the new layers would be silent. | `tests/services.test.ts` plus extended API tests: 43 tests. |
+| 10 | Tests covered routes but not caching, queueing, retention or persistence. | Regressions in the new layers would be silent. | `tests/services.test.ts` plus extended API, chat, driver and AI-provider tests: 56 tests. |
 
 ## Found while diagnosing "why can't it book"
 
@@ -24,8 +24,18 @@ The confirm step *was* pressing Submit. SevenRooms' reCAPTCHA Enterprise rejecte
 ## What did not change
 
 - The booking contract: prepare fills and holds, only the diner's confirm presses Submit, holds expire, cancel releases.
-- The guardrails: no cards, no fee policies, a screenshot of the restaurant's page as evidence when Pearl stops.
-- Single-user, single-machine scope. There is still one live browser session at a time and one local profile; that is deliberate for a demo.
+- The core guardrail: Pearl never types a card number or a password.
+- Single-user, single-machine scope. There is still one live booking session at a time and one local profile; that is deliberate for a demo.
+
+## Since this review
+
+The demo moved on from the local-only, screenshot-based shape reviewed above:
+
+- **Deployable browser (Browserbase).** Auto mode can run on a remote cloud browser instead of a local window, so bookings work on a deployed server. When reCAPTCHA challenges, Pearl embeds Browserbase's interactive live view and the diner ticks the box in-app.
+- **Deployable chat (Anthropic API).** Chat understanding can run through the Anthropic API (`ANTHROPIC_API_KEY`, `PEARL_AI_MODEL`, default `claude-sonnet-5`) instead of the local Codex CLI, so the agent needs no machine login. The parser still runs first and catches any model failure.
+- **Card and sign-in venues finish in the live view.** Rather than a hard `PAYMENT_REQUIRED` / `LOGIN_REQUIRED` stop, on the cloud browser Pearl fills everything it can, holds the table, and hands the diner the live view to add the card or sign in and book; it records the confirmation. Pearl still never enters the card itself. Locally it stops and offers "Finish on SevenRooms".
+- **Fees are a heads-up, not a wall.** A cancellation fee is shown to the diner to accept or decline at confirm; `PEARL_STRICT_NO_FEE=1` restores the old refuse-outright behaviour.
+- **Screenshots removed.** The evidence image and its endpoint are gone; a stop explains itself in words and offers the live-view or SevenRooms finish instead.
 
 ## Still open (next steps)
 

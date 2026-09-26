@@ -11,15 +11,19 @@ flowchart LR
   D([Diner]) --> UI[React app · Vite<br/>sidebar shell: Concierge · Reservations · Settings]
   UI --- ST[Zustand store<br/>chat · booking job · profile · theme]
   ST -->|/api| API[Hono API<br/>routing · errors · request log]
-  API --> CH[Chat<br/>parser first, Codex when available]
-  CH --> CQ[Codex queue<br/>serialised · 5 min cache]
-  CQ --> CX[(Codex CLI<br/>local, no API key)]
+  API --> CH[Chat<br/>parser first, model when available]
+  CH --> AI{Model backend}
+  AI -->|API key, deployable| AN[(Anthropic API<br/>claude-sonnet-5)]
+  AI -->|local login| CX[(Codex CLI<br/>no API key)]
   API --> AV[Availability service<br/>20 s cache · concurrency cap · nearby fallback]
   AV -->|GET widget/range| SR[(SevenRooms<br/>public widget)]
   API --> JB[Booking jobs<br/>state machine · timers · retention]
   JB --> BK[Booking driver<br/>prepare / confirm]
-  BK --> BP[Browser pool<br/>one Chromium, a context per booking]
+  BK --> BR{Booking browser}
+  BR -->|local window| BP[Chromium pool<br/>context per booking]
+  BR -->|deployed| BB[(Browserbase<br/>cloud browser + live view)]
   BP -->|guest checkout + reCAPTCHA| SR
+  BB -->|guest checkout + reCAPTCHA| SR
   JB --> LG[(Bookings ledger<br/>.local/bookings.json)]
   API --> PF[(Local profile<br/>.local/profile.json)]
   API --> VN[(Curated venues<br/>21 slugs, NY + SF)]
@@ -42,17 +46,23 @@ sequenceDiagram
   Diner->>UI: picks a restaurant
   API->>B: prepare
   B->>SR: select time · table held 5 min · read policy · fill form
-  B-->>UI: Ready to book, or a named stop with a screenshot
+  B-->>UI: Ready to book (or a named stop with the reason)
   Diner->>UI: Confirm
   API->>B: confirm
-  B->>SR: press Submit
-  alt reCAPTCHA accepts
+  alt venue needs a card or a sign-in (cloud browser)
+    B-->>UI: live view · "add your card and book"
+    Diner->>SR: adds card / signs in · books in the live view
     SR-->>UI: Reservation confirmed
-  else reCAPTCHA steps up to a checkbox
-    B-->>UI: "One tick from you" · window to the front
-    Diner->>SR: ticks "I'm not a robot"
-    B->>SR: press Submit again
-    SR-->>UI: Reservation confirmed
+  else Pearl presses Submit
+    B->>SR: press Submit
+    alt reCAPTCHA accepts
+      SR-->>UI: Reservation confirmed
+    else reCAPTCHA steps up to a checkbox
+      B-->>UI: live view · "tick I'm not a robot"
+      Diner->>SR: ticks the box
+      B->>SR: press Submit again
+      SR-->>UI: Reservation confirmed
+    end
   end
 ```
 
@@ -61,10 +71,10 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
   [*] --> PREPARING: diner taps a time
-  PREPARING --> READY: form filled, table held
-  PREPARING --> FAILED: card · fee · slot gone · timeout
+  PREPARING --> READY: form filled, table held<br/>(card/sign-in venues finish in the live view)
+  PREPARING --> FAILED: slot gone · timeout · card or sign-in with no live view
   PREPARING --> CANCELLED: diner cancels or picks another time
-  READY --> SUBMITTING: diner confirms
+  READY --> SUBMITTING: diner confirms<br/>(or finishes the card/sign-in in the live view)
   READY --> CANCELLED: diner cancels
   READY --> EXPIRED: 5-minute hold lapses
   SUBMITTING --> CONFIRMED: restaurant accepts
@@ -80,8 +90,8 @@ stateDiagram-v2
 ```mermaid
 flowchart LR
   M[Diner message<br/>or tapped quick reply] --> P[Parser<br/>chrono-node · patterns · aliases]
-  P --> C{Codex on?}
-  C -->|yes| X[Codex CLI<br/>strict JSON] --> MG[Merge over parser<br/>validate with Zod]
+  P --> C{Model on?}
+  C -->|yes| X[Model<br/>Anthropic API or Codex · strict JSON] --> MG[Merge over parser<br/>validate with Zod]
   C -->|no| V
   MG --> V{All fields known?<br/>area · date · window · party}
   MG -.->|model fails or junk| V
@@ -97,22 +107,21 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  A[Checkout page open<br/>table held] --> B{Visible card field<br/>or payment frame?}
-  B -->|yes| B1[Stop<br/>PAYMENT_REQUIRED]
-  B -->|no| C{Login required?}
-  C -->|yes| C1[Stop<br/>LOGIN_REQUIRED]
-  C -->|no| D[Open policy dialog<br/>read + photograph]
-  D --> E{Fee or card<br/>on file?}
-  E -->|yes| E1[Stop<br/>CANCELLATION_FEE<br/>+ screenshot]
-  E -->|no| F[Fill name, email, phone<br/>tick cancellation policy]
-  F --> G[READY · wait for the diner]
-  G -->|Confirm| H[Press Submit]
+  A[Checkout page open<br/>table held] --> D[Read policy<br/>fee is a heads-up, not a stop]
+  D --> F[Fill name, email, phone<br/>tick cancellation policy]
+  F --> B{Card or sign-in<br/>required?}
+  B -->|no| G[READY · wait for the diner]
+  B -->|yes, cloud browser| P[READY · live view<br/>diner adds card / signs in · Pearl never types it]
+  B -->|yes, no live view| B1[Stop: PAYMENT_REQUIRED / LOGIN_REQUIRED<br/>offer Finish on SevenRooms]
+  G -->|Confirm| H[Pearl presses Submit]
+  P -->|diner books in the live view| K
   H --> J{reCAPTCHA<br/>verdict}
   J -->|accepted| K[Confirmed<br/>saved to ledger]
-  J -->|checkbox shown| L[Diner ticks the box<br/>Pearl presses Submit again]
+  J -->|checkbox shown| L[Diner ticks the box in the live view<br/>Pearl presses Submit again]
   L --> K
-  J -->|nobody ticks in 2 min| M[Stop: CAPTCHA_UNSOLVED<br/>try again]
+  J -->|nobody finishes in time| M[Stop: CAPTCHA_UNSOLVED<br/>try again]
   G -->|Cancel or 5 min| I[Close browser · hold released]
+  P -->|Cancel or 5 min| I
 ```
 
 ## 6. From one platform to five
