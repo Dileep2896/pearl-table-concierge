@@ -57,6 +57,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     humanSolveMs: num(env.PEARL_HUMAN_SOLVE_MS, 120_000),
     // The booking window stays off-screen while Pearl fills the form; it only comes into view if a reCAPTCHA checkbox appears.
     browserOffscreen: !env.PEARL_BROWSER_VISIBLE && env.PEARL_HEADLESS !== '1',
-    bookingMode: env.PEARL_BOOKING_MODE === 'handoff' ? 'handoff' : 'auto',
+    // Default to the in-app browser handoff (no separate window, deployable). PEARL_BOOKING_MODE=auto drives a local server browser instead.
+    bookingMode: env.PEARL_BOOKING_MODE === 'auto' ? 'auto' : 'handoff',
   };
 }

@@ -31,7 +31,7 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `PEARL_AVAILABILITY_CONCURRENCY` | 6 | Parallel SevenRooms requests |
 | `PEARL_JOB_RETENTION_MS` | 1800000 | How long finished bookings stay readable |
 | `PEARL_STRICT_NO_FEE` | unset | `1` refuses fee venues outright. By default a fee is shown to the diner to accept or decline at confirm |
-| `PEARL_BOOKING_MODE` | auto | `handoff` embeds the restaurant's SevenRooms page in an in-app browser panel for the diner to finish (with an open-in-new-tab fallback) instead of driving a server browser — the deployable mode |
+| `PEARL_BOOKING_MODE` | handoff | Default `handoff` embeds the restaurant's SevenRooms page in an in-app browser panel for the diner to finish — no separate window, and the deployable mode. `auto` instead drives a local browser that fills and submits for you (opens a real browser window, needed for reCAPTCHA; local only) |
 | `PEARL_HEADLESS` | unset | `1` hides the booking browser. A hidden browser cannot pass SevenRooms' reCAPTCHA, so leave it off for real bookings |
 | `PEARL_BROWSER_VISIBLE` | unset | By default the booking window launches off-screen and only appears if a reCAPTCHA checkbox is needed. `1` keeps it on-screen throughout |
 | `PEARL_BROWSER_CHANNEL` | unset | `chrome` uses the installed Google Chrome instead of Playwright's Chromium |
@@ -58,7 +58,12 @@ The booking driver test runs Chromium against a local stand-in for the widget, s
 
 The confirm step auto-fills from a local profile stored at `.local/profile.json` (git-ignored, created on first save). Edit it from the "Edit" link in the page header, or by saving changed details on the confirm form. It is sent only to the restaurant's SevenRooms booking form when you confirm a table. `PEARL_DEMO_PROFILE=/path/to/profile.json` overrides the location.
 
-## How a booking happens
+## Booking modes
+
+- **Handoff (default):** Pearl finds the table and opens the restaurant's SevenRooms page in an in-app browser panel; you pick the time, add details and confirm there, then tap "I'm done." Nothing pops out of the app, and it works on any server because the booking happens in your own browser.
+- **Auto (`PEARL_BOOKING_MODE=auto`, local only):** Pearl drives a real browser to fill and submit for you. That browser is a separate window (it must be real to pass reCAPTCHA); it stays off-screen until a human check is needed. Not usable on a headless server.
+
+## How an auto booking happens
 
 1. Pick a time. Pearl opens the restaurant's SevenRooms page in a headless browser, selects that time (the widget holds the table for 5 minutes), reads the restaurant's policy, and fills the guest form from your profile. Nothing is submitted.
 2. The panel shows what was filled, the policy, and a countdown on the hold, with **Confirm booking** and **Cancel**.

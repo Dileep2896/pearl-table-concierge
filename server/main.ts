@@ -26,7 +26,7 @@ const app = createApp({
 });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
-  console.log(`Pearl demo API: http://${config.host}:${info.port} · chat via ${config.useCodex ? 'Codex CLI (set PEARL_DEMO_AI=off for the built-in parser)' : 'built-in parser'} · availability and booking via the public SevenRooms widget`);
+  console.log(`Pearl demo API: http://${config.host}:${info.port} · chat via ${config.useCodex ? 'Codex CLI (PEARL_DEMO_AI=off for the parser)' : 'parser'} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? ' (drives a local browser)' : ' (in-app SevenRooms handoff)'}`);
   log('info', 'api_started', { port: info.port, codex: config.useCodex, dataDir: config.dataDir });
 });
 
