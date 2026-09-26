@@ -19,19 +19,21 @@
 .profile-drawer { margin-bottom: 12px; }
 
 /* Stage: two columns */
-.stage { flex: 1; display: grid; grid-template-columns: minmax(320px, 400px) 1fr; gap: 28px; padding: 20px 0 32px; align-items: start; min-height: 0; }
-.rail { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 40px); }
-.board { min-width: 0; }
+.stage { flex: 1; display: grid; grid-template-columns: minmax(320px, 400px) 1fr; gap: 28px; padding: 20px 0 20px; align-items: stretch; min-height: 0; }
+/* The chat column fills the stage height; its conversation scrolls and the composer stays pinned at the bottom. */
+.rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+/* The results board scrolls on its own, independently of the chat column. */
+.board { min-width: 0; min-height: 0; overflow-y: auto; padding-bottom: 20px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.board::-webkit-scrollbar { width: 6px; } .board::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 
 /* Centered conversation (clarifying, before results) */
-.chat-center { flex: 1; display: flex; justify-content: center; min-height: calc(100vh - 40px); }
-.chat-column { width: min(720px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 20px 0 28px; }
+.chat-center { flex: 1; min-height: 0; display: flex; justify-content: center; }
+.chat-column { width: min(720px, 100%); height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px 0 20px; }
 .chat-column .conversation { flex: 1; padding-top: 4px; }
 .chat-column .composer { margin-top: 2px; }
-@media (max-width: 860px) { .chat-center { min-height: calc(100vh - 150px); } }
 
 /* Conversation */
-.conversation { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 4px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.conversation { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 4px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .conversation::-webkit-scrollbar { width: 6px; } .conversation::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 .bubble { max-width: 88%; padding: 12px 16px; border-radius: 18px; font-size: 14.5px; line-height: 1.5; }
 .bubble.user { align-self: flex-end; background: linear-gradient(160deg, var(--brass-bright), var(--brass)); color: var(--brass-ink); border-bottom-right-radius: 6px; font-weight: 500; box-shadow: var(--shadow-soft); }
@@ -71,9 +73,10 @@
 .btn-quiet { background: transparent; color: var(--muted); padding: 8px 12px; }
 
 /* App shell: fixed left sidebar + scrolling main */
-.shell { position: relative; z-index: 1; min-height: 100vh; display: grid; grid-template-columns: 248px 1fr; }
-.main { min-width: 0; display: flex; flex-direction: column; overflow-x: hidden; }
-.page-wrap { flex: 1; display: flex; flex-direction: column; padding: 0 var(--gut); }
+/* Lock the app to the viewport so each page manages its own scroll (the composer never scrolls away). */
+.shell { position: relative; z-index: 1; height: 100vh; overflow: hidden; display: grid; grid-template-columns: 248px 1fr; }
+.main { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.page-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--gut); }
 
 /* Sidebar */
 .sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 8px; padding: 22px 16px; border-right: 1px solid var(--line-soft); background: color-mix(in oklab, var(--panel) 55%, transparent); backdrop-filter: blur(8px); }
@@ -95,7 +98,7 @@
 .side-profile-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Page scaffolding */
-.page { flex: 1; max-width: 920px; width: 100%; margin: 0 auto; padding: clamp(20px, 4vh, 40px) 0 40px; }
+.page { flex: 1; min-height: 0; overflow-y: auto; max-width: 920px; width: 100%; margin: 0 auto; padding: clamp(20px, 4vh, 40px) 0 40px; }
 .page-head { margin-bottom: 24px; }
 .page-head h1 { font-size: clamp(30px, 4vw, 42px); font-weight: 500; margin: 0 0 6px; }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 60px 20px; text-align: center; color: var(--muted); }
@@ -116,7 +119,7 @@
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 8px; }
 
 /* Intro (empty) state — one centered composition, the input is the hero */
-.intro-stage { flex: 1; display: grid; place-items: center; padding: clamp(24px, 6vh, 72px) 0 100px; min-height: calc(100vh - 40px); }
+.intro-stage { flex: 1; min-height: 0; overflow-y: auto; display: grid; place-items: center; padding: clamp(24px, 6vh, 72px) 0 100px; }
 .intro-inner { width: min(680px, 100%); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 20px; }
 .pearl-mark { filter: drop-shadow(0 8px 30px color-mix(in oklab, var(--brass) 34%, transparent)); }
 .intro-title { font-size: clamp(34px, 5vw, 54px); font-weight: 500; line-height: 1.06; letter-spacing: -.02em; margin: 4px 0 0; }
@@ -287,12 +290,16 @@
   .nav-label { font-size: 11px; }
   .nav-badge { position: absolute; top: 2px; right: 14px; margin: 0; }
   .side-foot { margin: 0; padding: 0; border: 0; }
-  .main { padding-bottom: 74px; }
-  .stage { grid-template-columns: 1fr; gap: 18px; }
-  .rail { position: static; max-height: none; order: 2; }
-  .board { order: 1; }
+  /* On phones the columns stack and the page scrolls normally, so the viewport lock is released here. */
+  .shell { height: auto; min-height: 100vh; overflow: visible; }
+  .main { padding-bottom: 74px; overflow: visible; }
+  .page-wrap { min-height: auto; }
+  .stage { grid-template-columns: 1fr; gap: 18px; min-height: auto; align-items: start; }
+  .rail { order: 2; min-height: auto; }
+  .board { order: 1; overflow: visible; min-height: auto; padding-bottom: 0; }
   .conversation { max-height: 42vh; }
-  .intro-stage { min-height: calc(100vh - 140px); }
+  .page { overflow-y: visible; min-height: auto; }
+  .intro-stage { min-height: calc(100vh - 140px); overflow-y: visible; }
 }
 @media (max-width: 560px) {
   .grid2 { grid-template-columns: 1fr; }
