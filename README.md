@@ -35,6 +35,7 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `PEARL_HEADLESS` | unset | `1` hides the booking browser. A hidden browser cannot pass SevenRooms' reCAPTCHA, so leave it off for real bookings |
 | `PEARL_BROWSER_VISIBLE` | unset | By default the booking window launches off-screen and only appears if a reCAPTCHA checkbox is needed. `1` keeps it on-screen throughout |
 | `PEARL_BROWSER_CHANNEL` | unset | `chrome` uses the installed Google Chrome instead of Playwright's Chromium |
+| `PEARL_BROWSER_CDP_URL` | unset | Auto mode connects to a remote browser over CDP (your own headed Chrome on a VM, or a managed browser) instead of launching locally. This is how to run auto mode on a deployed server; whether it passes reCAPTCHA depends on that browser's IP reputation and stealth, not on Pearl |
 | `PEARL_HUMAN_SOLVE_MS` | 120000 | How long Pearl waits for you to tick the reCAPTCHA checkbox |
 | `PEARL_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
