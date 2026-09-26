@@ -83,7 +83,7 @@ Measured today on a laptop:
 | Understand the message | 0.2 ms | ~8 s |
 | Find tables across 6 venues | 0.5–0.8 s | same |
 | Tap → form filled, table held | ~4–5 s (shared browser, no launch cost) | same |
-| Confirm → restaurant's response | ~3–10 s (submit + widget round trip) | same |
+| Confirm → restaurant's response | ~3 s when reCAPTCHA accepts; plus one tick from the diner when it shows the checkbox | same |
 | **Ask → times** | **under 1 s** | **~9 s** |
 | **Ask → booked, with a human confirming** | **~12 s plus the human** | **~22 s plus the human** |
 
@@ -144,6 +144,10 @@ What does not change: the chat layer, the profile, the confirm-before-submit con
 5. A second platform through the adapter boundary, most likely Resy with explicit user consent, to prove the abstraction.
 6. Prompt caching and Haiku for the model path when it moves to a metered API.
 7. Card-required venues with explicit consent and a tokenised payment method, if the product wants them.
+
+## Proof it works
+
+On 26 September 2026 the flow booked a real table end to end: Miriam West Village, Friday 2 October 2026, 7:00 PM, party of 2, reservation #XGYXY455VAU, confirmed by the restaurant by SMS. On that run reCAPTCHA accepted the first Submit; on other runs it showed the checkbox and waited for the tick. Both paths are handled and covered by tests against a local stand-in for the widget.
 
 ## Architecture diagrams
 

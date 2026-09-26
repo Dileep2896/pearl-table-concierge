@@ -42,8 +42,15 @@ sequenceDiagram
   B-->>UI: Ready to book, or a named stop with a screenshot
   Diner->>UI: Confirm
   API->>B: confirm
-  B->>SR: Submit, once
-  SR-->>UI: Reservation confirmed
+  B->>SR: press Submit
+  alt reCAPTCHA accepts
+    SR-->>UI: Reservation confirmed
+  else reCAPTCHA steps up to a checkbox
+    B-->>UI: "One tick from you" · window to the front
+    Diner->>SR: ticks "I'm not a robot"
+    B->>SR: press Submit again
+    SR-->>UI: Reservation confirmed
+  end
 ```
 
 ## 3. Booking job states
@@ -95,7 +102,12 @@ flowchart LR
   E -->|yes| E1[Stop<br/>CANCELLATION_FEE<br/>+ screenshot]
   E -->|no| F[Fill name, email, phone<br/>tick cancellation policy]
   F --> G[READY · wait for the diner]
-  G -->|Confirm| H[Press Submit once]
+  G -->|Confirm| H[Press Submit]
+  H --> J{reCAPTCHA<br/>verdict}
+  J -->|accepted| K[Confirmed<br/>saved to ledger]
+  J -->|checkbox shown| L[Diner ticks the box<br/>Pearl presses Submit again]
+  L --> K
+  J -->|nobody ticks in 2 min| M[Stop: CAPTCHA_UNSOLVED<br/>try again]
   G -->|Cancel or 5 min| I[Close browser · hold released]
 ```
 
