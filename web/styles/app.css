@@ -161,6 +161,10 @@
 .others summary::-webkit-details-marker { display: none; }
 .others summary::before { content: '＋ '; color: var(--brass); }
 
+.nearby { margin-top: 24px; }
+.section-label { font-size: 15px; font-weight: 600; color: var(--muted); margin: 0 0 12px; padding-left: 2px; display: flex; align-items: center; gap: 10px; }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
 /* Shimmer */
 .shimmer-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px 22px; }
 .shimmer-row { display: flex; justify-content: space-between; }

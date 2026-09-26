@@ -57,7 +57,9 @@ export function createApp(services: AppServices) {
     if (!turn.ready || turn.intent.unsupportedLocation) return c.json({ ...turn, ready: false, results: null });
     const intent = turn.intent as SearchIntent;
     const results = await services.availability.search(intent);
-    return c.json({ ...turn, reply: summarize(results, intent), results });
+    // If the asked-for area has nothing to book, suggest bookable places elsewhere in the same city.
+    const nearby = results.some(r => r.slots.some(s => s.type === 'book')) ? [] : await services.availability.searchNearby(intent);
+    return c.json({ ...turn, reply: summarize(results, intent, nearby), results, nearby: nearby.length ? nearby : null });
   });
 
   app.post('/api/book', async c => {

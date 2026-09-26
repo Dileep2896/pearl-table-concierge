@@ -4,7 +4,7 @@ import { emptyContact, profileComplete } from '../lib/format';
 
 type Theme = 'dark' | 'light';
 export type Page = 'concierge' | 'reservations' | 'settings';
-type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; thinking: boolean; source: 'codex' | 'parser' | null };
+type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; nearby: VenueAvailability[] | null; thinking: boolean; source: 'codex' | 'parser' | null };
 const busy = (s: BookingJob['state']) => s === 'PREPARING' || s === 'READY' || s === 'SUBMITTING';
 const welcome: Message = { id: 'welcome', role: 'assistant', text: 'Good evening. Tell me where, when, and for how many, and I will find a table. Give me a window like “Friday 7 to 9” to see every opening, or one time like “Friday at 8” and I will hold the closest table at each restaurant so you only choose the room.' };
 
@@ -53,7 +53,7 @@ export const useStore = create<Store>((set, get) => ({
   page: 'concierge', setPage: p => set({ page: p }),
   toggleTheme: () => set(s => { const theme = s.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('pearl-theme', theme); } catch { /* ignore */ } document.documentElement.dataset.theme = theme; return { theme }; }),
 
-  chat: { messages: [welcome], intent: {}, results: null, thinking: false, source: null },
+  chat: { messages: [welcome], intent: {}, results: null, nearby: null, thinking: false, source: null },
   draft: '', setDraft: v => set({ draft: v }),
   error: null, setError: v => set({ error: v }),
   async send(text) {
@@ -62,7 +62,7 @@ export const useStore = create<Store>((set, get) => ({
     set(s => ({ chat: { ...s.chat, messages, thinking: true }, draft: '', error: null, selection: null }));
     try {
       const reply = await api.chat(messages, get().chat.intent);
-      set(s => ({ chat: { messages: [...messages, { id: `a-${Date.now()}`, role: 'assistant', text: reply.reply }], intent: reply.intent, results: reply.results, thinking: false, source: reply.source } }));
+      set(() => ({ chat: { messages: [...messages, { id: `a-${Date.now()}`, role: 'assistant', text: reply.reply }], intent: reply.intent, results: reply.results, nearby: reply.nearby ?? null, thinking: false, source: reply.source } }));
     } catch (e) {
       set(s => ({ chat: { ...s.chat, thinking: false }, error: e instanceof ApiError ? e.message : 'The concierge is offline. Is the API running on port 8788?' }));
     }

@@ -90,3 +90,17 @@ export function venuesFor(name?: string): Venue[] {
 }
 
 export function venueBySlug(slug: string) { return venues.find(venue => venue.slug === slug); }
+
+/** The city an area belongs to (a city name maps to itself), or undefined if we don't cover it. */
+export function cityOf(area?: string): string | undefined {
+  if (!area) return undefined;
+  const match = areas.find(a => a.name.toLowerCase() === area.toLowerCase());
+  return match?.city;
+}
+
+/** Venues in the same city as `area` but a different neighborhood — used to suggest alternatives when the asked-for area is dry. Empty when `area` is a whole city (already city-wide). */
+export function nearbyVenues(area?: string): Venue[] {
+  const city = cityOf(area);
+  if (!city || !area || area.toLowerCase() === city.toLowerCase()) return [];
+  return venues.filter(v => v.city === city && v.neighborhood.toLowerCase() !== area.toLowerCase());
+}

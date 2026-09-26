@@ -1,5 +1,5 @@
 import { fetchAvailability, minutesOf, type AvailabilityQuery, type Slot } from './sevenrooms';
-import { venuesFor, type Venue } from './venues';
+import { venuesFor, nearbyVenues, cityOf, type Venue } from './venues';
 import { describeIntent, type Intent } from './chat';
 import { log } from './logger';
 
@@ -41,21 +41,34 @@ export class AvailabilityService {
     return value;
   }
 
-  async search(intent: SearchIntent): Promise<VenueAvailability[]> {
-    const started = performance.now();
-    const results = await Promise.all(venuesFor(intent.neighborhood).map(async venue => {
+  private async lookupVenues(venues: Venue[], intent: SearchIntent): Promise<VenueAvailability[]> {
+    const results = await Promise.all(venues.map(async venue => {
       try {
         const slots = await this.slots({ venue: venue.slug, date: intent.date, partySize: intent.partySize, timeFrom: intent.timeFrom, timeTo: intent.timeTo });
         return { venue, slots, pick: intent.exactTime ? closestSlot(slots, intent.exactTime) : undefined };
       } catch (error) {
         log('warn', 'availability_failed', { venue: venue.slug, message: error instanceof Error ? error.message : String(error) });
-        return { venue, slots: [], error: 'lookup failed' };
+        return { venue, slots: [], error: 'lookup failed' } as VenueAvailability;
       }
     }));
-    log('info', 'availability_search', { venues: results.length, slots: results.reduce((n, r) => n + r.slots.length, 0), ms: Math.round(performance.now() - started) });
     // Restaurants with instantly bookable times first, then request-only, then nothing.
     const rank = (entry: VenueAvailability) => entry.slots.some(s => s.type === 'book') ? 0 : entry.slots.length ? 1 : 2;
     return results.sort((a, b) => rank(a) - rank(b) || a.venue.name.localeCompare(b.venue.name));
+  }
+
+  async search(intent: SearchIntent): Promise<VenueAvailability[]> {
+    const started = performance.now();
+    const results = await this.lookupVenues(venuesFor(intent.neighborhood), intent);
+    log('info', 'availability_search', { area: intent.neighborhood, venues: results.length, slots: results.reduce((n, r) => n + r.slots.length, 0), ms: Math.round(performance.now() - started) });
+    return results;
+  }
+
+  /** Bookable tables in other neighborhoods of the same city. Used only when the asked-for area is dry. */
+  async searchNearby(intent: SearchIntent): Promise<VenueAvailability[]> {
+    const venues = nearbyVenues(intent.neighborhood);
+    if (!venues.length) return [];
+    const results = await this.lookupVenues(venues, intent);
+    return results.filter(r => r.slots.some(s => s.type === 'book'));
   }
 }
 
@@ -69,21 +82,31 @@ const clock = (t: string) => t.replace(/^(\d\d):(\d\d)$/, (_, h, m) => `${Number
 const venueWord = (n: number) => (n === 1 ? 'restaurant' : 'restaurants');
 const requestNote = (n: number) => `${n} ${venueWord(n)} nearby ${n === 1 ? 'takes' : 'take'} requests only — the restaurant confirms those by hand, so I can’t book them instantly.`;
 
-export function summarize(results: VenueAvailability[], intent: Intent) {
+const firstBookable = (r: VenueAvailability) => r.pick ?? r.slots.find(s => s.type === 'book');
+function nearbyLine(nearby: VenueAvailability[], intent: Intent): string {
+  if (!nearby.length) return '';
+  const city = cityOf(intent.neighborhood) ?? nearby[0].venue.city;
+  const named = nearby.slice(0, 3).map(r => { const s = firstBookable(r); return `${r.venue.name} (${r.venue.neighborhood}${s ? `, ${s.label}` : ''})`; });
+  const list = named.length === 1 ? named[0] : `${named.slice(0, -1).join(', ')} and ${named.at(-1)}`;
+  return ` Nearby in ${city}, ${list} ${named.length === 1 ? 'has' : 'have'} tables — tap one below.`;
+}
+
+export function summarize(results: VenueAvailability[], intent: Intent, nearby: VenueAvailability[] = []) {
   const requestOnly = results.filter(r => r.slots.length && !r.slots.some(s => s.type === 'book')).length;
+  const near = nearbyLine(nearby, intent);
   if (intent.exactTime) {
     const picks = results.filter(r => r.pick);
     const exact = picks.filter(r => r.pick!.time === intent.exactTime).length;
-    if (!picks.length) return requestOnly
-      ? `No table I can book instantly ${describeIntent(intent)}. ${requestNote(requestOnly)} Try another time or date for an instant table.`
-      : `No open tables ${describeIntent(intent)}. Try a different time or date.`;
+    if (!picks.length) return (requestOnly
+      ? `No table I can book instantly ${describeIntent(intent)}. ${requestNote(requestOnly)}`
+      : `No instant tables ${describeIntent(intent)}.`) + (near || ' Try another time or date.');
     return `${picks.length} ${picks.length === 1 ? 'restaurant has' : 'restaurants have'} a table ${describeIntent(intent)}${exact < picks.length ? `, ${exact} at exactly ${clock(intent.exactTime)}` : ''}. Pick a restaurant and I’ll book the closest time for you.`;
   }
   const bookable = results.flatMap(r => r.slots.filter(s => s.type === 'book'));
   const withTables = results.filter(r => r.slots.some(s => s.type === 'book')).length;
-  if (!bookable.length) return requestOnly
-    ? `No tables I can book instantly ${describeIntent(intent)}. ${requestNote(requestOnly)} Try a different time or date for an instant table.`
-    : `No open tables ${describeIntent(intent)}. Try a different time window or date.`;
+  if (!bookable.length) return (requestOnly
+    ? `No tables I can book instantly ${describeIntent(intent)}. ${requestNote(requestOnly)}`
+    : `No open tables ${describeIntent(intent)}.`) + (near || ' Try a different time window or date.');
   const parts = [`Found ${bookable.length} open ${bookable.length === 1 ? 'time' : 'times'} at ${withTables} ${venueWord(withTables)} ${describeIntent(intent)}.`];
   if (requestOnly) parts.push(`${requestOnly} more ${requestOnly === 1 ? 'takes' : 'take'} requests only.`);
   parts.push('Tap a time and I’ll book it after you confirm.');

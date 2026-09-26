@@ -148,6 +148,12 @@ describe('exact-time picks', () => {
     expect(exactText).toMatch(/No table I can book instantly/); expect(exactText).not.toMatch(/Pick a restaurant/);
     expect(summarize([{ venue, slots: [] }], { date: '2026-10-03', partySize: 2, neighborhood: 'SoMa', timeFrom: '19:00', timeTo: '21:00' })).toMatch(/No open tables/);
   });
+  it('names nearby restaurants in the same city when the area is dry', () => {
+    const somaVenue = { slug: 'benusf', name: 'Benu', city: 'San Francisco', neighborhood: 'SoMa', timezone: 'America/Los_Angeles', address: '', cuisine: '' };
+    const nearbyVenue = { slug: 'bourbonsteaksanfrancisco', name: 'Bourbon Steak', city: 'San Francisco', neighborhood: 'Union Square', timezone: 'America/Los_Angeles', address: '', cuisine: '' };
+    const text = summarize([{ venue: somaVenue, slots: [slot('19:00', 'request')] }], { date: '2026-10-03', partySize: 2, neighborhood: 'SoMa', timeFrom: '19:00', timeTo: '21:00' }, [{ venue: nearbyVenue, slots: [slot('20:00')] }]);
+    expect(text).toMatch(/Nearby in San Francisco/); expect(text).toMatch(/Bourbon Steak \(Union Square, 20:00\)/); expect(text).toMatch(/tap one below/);
+  });
   it('summarises picks per restaurant', () => {
     const venue = { slug: 'x', name: 'X', city: 'New York', neighborhood: 'West Village', timezone: 'America/New_York', address: '', cuisine: '' };
     const text = summarize([{ venue, slots: [slot('19:15')], pick: slot('19:15') }, { venue: { ...venue, slug: 'y' }, slots: [slot('19:00')], pick: slot('19:00') }], { exactTime: '19:00', date: '2026-10-02', partySize: 2, neighborhood: 'West Village', timeFrom: '18:30', timeTo: '20:30' });
