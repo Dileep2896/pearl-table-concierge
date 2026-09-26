@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../../store/store';
 import { ContactFields } from './ProfileForm';
 import { Button } from '../../ui/Button';
@@ -8,6 +8,8 @@ export function SettingsPage() {
   const profile = useStore(s => s.profile); const save = useStore(s => s.saveProfile);
   const theme = useStore(s => s.theme); const toggle = useStore(s => s.toggleTheme);
   const [draft, setDraft] = useState(profile.saved);
+  // If Settings mounts before the profile has loaded, fill the form once it arrives.
+  useEffect(() => { if (profile.loaded) setDraft(profile.saved); }, [profile.loaded]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile.saved);
   return <div className="page">

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useStore } from '../../store/store';
 import { dayLabel, timeLabel } from '../../lib/format';
+import { useModalA11y } from '../../lib/useModal';
 import { panelPop, overlayFade } from '../../lib/motion';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
@@ -22,6 +23,11 @@ export function JobCard() {
   const needsHuman = Boolean(job?.state === 'SUBMITTING' && job.verification && !job.verification.passedAt);
   // A card- or login-required venue Tavola filled but can't finish: the diner completes it in the live view.
   const needsDiner = job?.prepared?.needsDiner;
+  // Backdrop click and Escape do the same thing: release a live hold (PREPARING/READY) or dismiss a finished
+  // one. While SUBMITTING, neither closes — a submit is in flight.
+  const closeJob = () => { if (!job || job.state === 'SUBMITTING') return; (job.state === 'PREPARING' || job.state === 'READY' ? cancel : dismiss)(); };
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalA11y(dialogRef, { active: Boolean(job), onEscape: job && job.state !== 'SUBMITTING' ? closeJob : undefined });
   useNow(Boolean(job && (job.state === 'READY' || needsHuman)));
   useEffect(() => {
     if (!needsHuman) { document.title = 'Tavola — Table concierge'; return; }
@@ -30,8 +36,8 @@ export function JobCard() {
   }, [needsHuman]);
 
   return <AnimatePresence>{job && <>
-    <motion.div className="scrim" variants={overlayFade} initial="hidden" animate="show" exit="exit" onClick={() => { if (!['SUBMITTING'].includes(job.state)) (job.state === 'READY' ? cancel : dismiss)(); }} />
-    <div className="job-overlay"><motion.section className={`job-card state-${job.state.toLowerCase()}`} variants={panelPop} initial="hidden" animate="show" exit="exit" role="dialog" aria-modal="true" aria-label="Booking status">
+    <motion.div className="scrim" variants={overlayFade} initial="hidden" animate="show" exit="exit" onClick={closeJob} />
+    <div className="job-overlay"><motion.section ref={dialogRef} tabIndex={-1} className={`job-card state-${job.state.toLowerCase()}`} variants={panelPop} initial="hidden" animate="show" exit="exit" role="dialog" aria-modal="true" aria-label="Booking status">
       {job.state !== 'SUBMITTING' && <button className="job-close" aria-label="Close" onClick={() => (job.state === 'READY' || job.state === 'PREPARING' ? cancel() : dismiss())}><Icon name="x" size={18} /></button>}
       <header className="job-head">
         <div><p className="job-eyebrow">{job.request.venue.city} · {job.request.venue.neighborhood}</p><h2>{titles[job.state] ?? job.state}</h2></div>

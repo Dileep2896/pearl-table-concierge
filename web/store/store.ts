@@ -6,6 +6,9 @@ type Theme = 'dark' | 'light';
 export type Page = 'concierge' | 'reservations' | 'settings';
 type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; nearby: VenueAvailability[] | null; thinking: boolean; source: 'anthropic' | 'codex' | 'parser' | null };
 const busy = (s: BookingJob['state']) => s === 'PREPARING' || s === 'READY' || s === 'SUBMITTING';
+// In-flight guard: a hold takes ~1-2s to place, during which the results are still tappable. Without this,
+// a rapid second slot tap would start a second server hold before the first job is set.
+let preparing = false;
 const welcome: Message = { id: 'welcome', role: 'assistant', text: 'Good evening. Tell me where, when, and for how many, and I will find a table. Give me a window like “Friday 7 to 9” to see every opening, or one time like “Friday at 8” and I will hold the closest table at each restaurant so you only choose the room.' };
 
 export type Store = {
@@ -100,8 +103,9 @@ export const useStore = create<Store>((set, get) => ({
 
   handoff: null,
   openHandoff(venue, slot, details) {
-    const date = details?.date ?? get().chat.intent.date!;
-    const partySize = details?.partySize ?? get().chat.intent.partySize!;
+    const date = details?.date ?? get().chat.intent.date;
+    const partySize = details?.partySize ?? get().chat.intent.partySize;
+    if (!date || !partySize) { set({ error: 'I need the date and party size before opening the booking page.' }); return; }
     set({ handoff: { venue, slot, url: sevenRoomsUrl(venue.slug, date, partySize, slot.time) }, selection: null, job: null });
   },
   async confirmHandoff(reference) {
@@ -115,6 +119,9 @@ export const useStore = create<Store>((set, get) => ({
   poll: { misses: 0 },
   async prepare(venue, slot) {
     const { intent } = get().chat; if (!intent.date || !intent.partySize) return;
+    // Don't start a second hold while one is already being placed or is live.
+    if (preparing || (get().job && busy(get().job!.state))) return;
+    preparing = true;
     const p = get().profile;
     if (JSON.stringify(p.contact) !== JSON.stringify(p.saved)) { try { await get().saveProfile(p.contact); } catch { /* proceed with typed details */ } }
     try {
@@ -122,6 +129,7 @@ export const useStore = create<Store>((set, get) => ({
       set(s => ({ job, selection: null, chat: { ...s.chat, messages: [...s.chat.messages, { id: `b-${job.id}`, role: 'user', text: `${venue.name} at ${slot.label}.` }] } }));
       get()._startPolling();
     } catch (e) { set({ error: e instanceof ApiError ? e.message : 'Could not reach the API.' }); }
+    finally { preparing = false; }
   },
   async confirmBooking() {
     const job = get().job; if (!job) return;
@@ -144,10 +152,14 @@ export const useStore = create<Store>((set, get) => ({
       const job = get().job; if (!job || !busy(job.state)) return;
       try {
         const { job: next } = await api.job(job.id);
+        // Bail if the diner cancelled/dismissed (or replaced) this job while the request was in flight,
+        // so a late tick can't resurrect a job the user already closed.
+        if (get().job?.id !== job.id) return;
         set({ job: next, poll: { ...get().poll, misses: 0 } });
         if (next.state === 'CONFIRMED') void get().loadBookings();
         if (busy(next.state)) schedule(next.state);
       } catch {
+        if (get().job?.id !== job.id) return;
         const misses = get().poll.misses + 1; set({ poll: { ...get().poll, misses } });
         if (misses >= 8) { set(s => ({ job: s.job && busy(s.job.state) ? { ...s.job, state: 'FAILED', result: { status: 'FAILED', code: 'API_UNREACHABLE', message: 'Lost contact with the concierge service. If you had already confirmed, check your phone for the confirmation. Restart the app if it is not running.' } } : s.job })); return; }
         schedule(get().job?.state ?? 'PREPARING');
@@ -170,5 +182,3 @@ export const useStore = create<Store>((set, get) => ({
     } catch { /* ignore */ }
   },
 }));
-
-export const jobIsBusy = busy;

@@ -1,22 +1,10 @@
-.app { position: relative; z-index: 1; min-height: 100%; max-width: 1200px; margin: 0 auto; padding: 0 var(--gut); display: flex; flex-direction: column; }
-.app.intro { max-width: 1100px; }
-
-/* Topbar */
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 18px; gap: 16px; }
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 12px; background: linear-gradient(150deg, var(--brass-bright), var(--brass)); color: var(--brass-ink); font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px; box-shadow: var(--shadow-soft); }
+/* Brand + profile bits shared by the sidebar */
 .brand-name { display: block; font-family: 'Fraunces', serif; font-size: 21px; font-weight: 600; line-height: 1; }
 .brand-sub { display: block; font-size: 12px; color: var(--muted); letter-spacing: .04em; margin-top: 3px; }
-.topbar-right { display: flex; align-items: center; gap: 10px; }
 .theme-toggle { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; transition: border-color .2s, background .2s; }
 .theme-toggle:hover { border-color: var(--brass); }
-.profile-badge { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; transition: border-color .2s; font-size: 14px; }
-.profile-badge:hover { border-color: var(--brass); }
 .avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in oklab, var(--brass) 22%, var(--panel)); color: var(--brass-bright); font-weight: 700; font-size: 12px; letter-spacing: .02em; }
 .profile-name { font-weight: 600; }
-.profile-edit { color: var(--brass-bright); font-size: 13px; padding-right: 4px; }
-
-.profile-drawer { margin-bottom: 12px; }
 
 /* Stage: two columns */
 .stage { flex: 1; display: grid; grid-template-columns: minmax(320px, 400px) 1fr; gap: 28px; padding: 20px 0 20px; align-items: stretch; min-height: 0; }
@@ -79,7 +67,7 @@
 .page-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--gut); }
 
 /* Sidebar */
-.sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 8px; padding: 22px 16px; border-right: 1px solid var(--line-soft); background: color-mix(in oklab, var(--panel) 55%, transparent); backdrop-filter: blur(8px); }
+.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 22px 16px; border-right: 1px solid var(--line-soft); background: color-mix(in oklab, var(--panel) 55%, transparent); backdrop-filter: blur(8px); }
 .side-brand { display: flex; align-items: center; gap: 11px; background: none; border: 0; padding: 6px 8px; cursor: pointer; color: var(--ink); text-align: left; }
 .side-brand .brand-name { display: block; font-family: 'Fraunces', serif; font-size: 20px; font-weight: 600; line-height: 1; }
 .side-brand .brand-sub { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
@@ -192,7 +180,6 @@
 .notice.bad { background: color-mix(in oklab, var(--bad) 16%, transparent); color: var(--bad); }
 .notice.warn { background: color-mix(in oklab, var(--brass) 14%, transparent); color: var(--ink); border: 1px solid color-mix(in oklab, var(--brass) 40%, transparent); align-items: flex-start; line-height: 1.45; }
 .notice.warn svg { color: var(--brass-bright); flex-shrink: 0; margin-top: 2px; }
-.handoff-steps { margin: 4px 0 10px; padding-left: 20px; color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; }
 .finish-hint { margin: 8px 0 0; }
 
 /* Bookings */
@@ -268,10 +255,13 @@
 .browser-title svg { color: var(--ok); }
 .browser-meta { flex: 1; text-align: center; font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browser-actions { display: flex; align-items: center; gap: 6px; }
-.browser-pop, .browser-x { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
-.browser-pop { transform: rotate(-45deg); }
-.browser-pop:hover, .browser-x:hover { color: var(--ink); border-color: var(--brass); }
-.browser-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.browser-x { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.browser-x:hover { color: var(--ink); border-color: var(--brass); }
+.handoff-open { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 32px 28px; }
+.handoff-open svg { color: var(--brass-bright); }
+.handoff-open h3 { margin: 0; font-family: 'Fraunces', serif; font-size: 22px; font-weight: 500; }
+.handoff-open p { max-width: 44ch; line-height: 1.55; }
+.handoff-open-btn { margin-top: 6px; text-decoration: none; }
 .browser-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--panel-2); }
 .browser-foot-btns { display: flex; gap: 8px; }
 @media (max-width: 560px) { .browser { height: calc(100vh - 24px); border-radius: var(--r-lg); } .browser-overlay { padding: 12px; } }
@@ -303,7 +293,6 @@
 }
 @media (max-width: 560px) {
   .grid2 { grid-template-columns: 1fr; }
-  .welcome { padding-top: 40px; }
   .job-card { padding: 20px; border-radius: var(--r-lg); }
   .job-head h2 { font-size: 25px; }
   .profile-name { display: none; }

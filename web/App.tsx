@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { useStore } from './store/store';
 import { Sidebar } from './ui/Sidebar';
 import { ConciergePage } from './features/chat/ConciergePage';
@@ -16,7 +16,9 @@ export function App() {
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => { void loadProfile(); void loadBookings(); void loadAreas(); void loadMode(); }, [loadProfile, loadBookings, loadAreas, loadMode]);
 
-  return <div className="shell">
+  // reducedMotion="user" makes Framer Motion honor prefers-reduced-motion for JS-driven animations too,
+  // including the infinite loops (thinking embers, verification glow, stepper pulse) that CSS media queries miss.
+  return <MotionConfig reducedMotion="user"><div className="shell">
     <Sidebar />
     <main className="main">
       <AnimatePresence mode="wait">
@@ -30,5 +32,5 @@ export function App() {
     <AnimatePresence>{error && <motion.div className="toast bad" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} onClick={() => useStore.getState().setError(null)}>{error}</motion.div>}</AnimatePresence>
     <JobCard />
     <HandoffCard />
-  </div>;
+  </div></MotionConfig>;
 }

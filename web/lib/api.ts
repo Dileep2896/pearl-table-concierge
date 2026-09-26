@@ -7,7 +7,7 @@ export type ChatResponse = { reply: string; intent: Intent; ready: boolean; sour
 export type Contact = { firstName: string; lastName: string; email: string; phone: string };
 export type JobState = 'PREPARING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
 export type BookingStep = { step: string; note?: string; at: string };
-export type JobResult = { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean };
+export type JobResult = { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string };
 export type BookingJob = {
   id: string; state: JobState; createdAt?: string; updatedAt?: string; steps: BookingStep[];
   request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact };
