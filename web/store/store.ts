@@ -28,8 +28,8 @@ export type Store = {
   clearSelection: () => void;
 
   /** Handoff mode: the diner finishes on SevenRooms; we ask whether it worked. */
-  handoff: { venue: Venue; slot: Slot; opened: boolean } | null;
-  openHandoff: (venue: Venue, slot: Slot) => void;
+  handoff: { venue: Venue; slot: Slot; url: string } | null;
+  openHandoff: (venue: Venue, slot: Slot, details?: { date: string; partySize: number }) => void;
   confirmHandoff: (reference?: string) => Promise<void>;
   dismissHandoff: () => void;
 
@@ -99,15 +99,14 @@ export const useStore = create<Store>((set, get) => ({
   clearSelection() { set({ selection: null }); },
 
   handoff: null,
-  openHandoff(venue, slot) {
-    const { intent } = get().chat;
-    const url = sevenRoomsUrl(venue.slug, intent.date!, intent.partySize!, slot.time);
-    try { window.open(url, '_blank', 'noopener'); } catch { /* popup blocked; the panel has a link */ }
-    set({ handoff: { venue, slot, opened: true }, selection: null });
+  openHandoff(venue, slot, details) {
+    const date = details?.date ?? get().chat.intent.date!;
+    const partySize = details?.partySize ?? get().chat.intent.partySize!;
+    set({ handoff: { venue, slot, url: sevenRoomsUrl(venue.slug, date, partySize, slot.time) }, selection: null, job: null });
   },
   async confirmHandoff(reference) {
-    const h = get().handoff; if (!h) return; const { intent } = get().chat;
-    try { await api.addBooking({ venue: h.venue.slug, date: intent.date!, time: h.slot.time, partySize: intent.partySize!, reference }); await get().loadBookings(); } catch { /* ignore */ }
+    const h = get().handoff; if (!h) return; const u = new URL(h.url); const date = u.searchParams.get('date')!; const partySize = Number(u.searchParams.get('party_size'));
+    try { await api.addBooking({ venue: h.venue.slug, date, time: h.slot.time, partySize, reference }); await get().loadBookings(); } catch { /* ignore */ }
     set(s => ({ handoff: null, chat: { ...s.chat, messages: [...s.chat.messages, { id: `h-${Date.now()}`, role: 'assistant', text: `Saved: ${h.venue.name} at ${h.slot.label}. Enjoy your evening.` }] } }));
   },
   dismissHandoff() { set({ handoff: null }); },

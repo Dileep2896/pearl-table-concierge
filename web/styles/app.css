@@ -249,6 +249,22 @@
 .hold-ring-text small { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 
 
+/* In-app browser (handoff) */
+.browser-overlay { position: fixed; inset: 0; z-index: 42; display: grid; place-items: center; padding: 20px; pointer-events: none; }
+.browser { pointer-events: auto; width: min(460px, 100%); height: min(860px, calc(100vh - 40px)); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow); }
+.browser-bar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.browser-title { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.browser-title svg { color: var(--ok); }
+.browser-meta { flex: 1; text-align: center; font-size: 12.5px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-actions { display: flex; align-items: center; gap: 6px; }
+.browser-pop, .browser-x { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+.browser-pop { transform: rotate(-45deg); }
+.browser-pop:hover, .browser-x:hover { color: var(--ink); border-color: var(--brass); }
+.browser-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.browser-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.browser-foot-btns { display: flex; gap: 8px; }
+@media (max-width: 560px) { .browser { height: calc(100vh - 24px); border-radius: var(--r-lg); } .browser-overlay { padding: 12px; } }
+
 /* Toast */
 .toast { position: fixed; z-index: 50; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 90vw; padding: 12px 18px; border-radius: var(--r-md); font-size: 14px; cursor: pointer; box-shadow: var(--shadow); }
 .toast.bad { background: color-mix(in oklab, var(--bad) 20%, var(--panel)); border: 1px solid var(--bad); color: var(--ink); }

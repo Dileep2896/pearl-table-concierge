@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useStore } from '../../store/store';
-import { dayLabel, timeLabel, sevenRoomsUrl } from '../../lib/format';
+import { dayLabel, timeLabel } from '../../lib/format';
 import { panelPop, overlayFade } from '../../lib/motion';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
@@ -55,7 +55,7 @@ export function JobCard() {
       {job.state === 'PREPARING' && <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Cancel</Button></div>}
       {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <p className="muted quiet finish-hint">Pearl can’t finish this one for you. You can complete it yourself on the restaurant’s page.</p>}
       {!['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) && <div className="row-end">
-        {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <Button onClick={() => window.open(sevenRoomsUrl(job.request.venue.slug, job.request.date, job.request.partySize, job.request.time), '_blank', 'noopener')}>Finish on SevenRooms</Button>}
+        {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <Button onClick={() => useStore.getState().openHandoff(job.request.venue, { venue: job.request.venue.slug, time: job.request.time, label: timeLabel(job.request.time), timeIso: `${job.request.date} ${job.request.time}:00`, area: '', type: 'book' }, { date: job.request.date, partySize: job.request.partySize })}>Finish on SevenRooms</Button>}
         {retryable.includes(job.result?.code ?? '') && <Button variant="ghost" onClick={retry}>Try again</Button>}
         <Button variant="ghost" onClick={dismiss}>{job.state === 'CONFIRMED' ? 'Done' : 'Back to tables'}</Button>
       </div>}

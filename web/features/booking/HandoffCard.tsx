@@ -1,29 +1,37 @@
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useStore } from '../../store/store';
-import { dayLabel, timeLabel, sevenRoomsUrl } from '../../lib/format';
-import { overlayFade, panelPop } from '../../lib/motion';
+import { dayLabel } from '../../lib/format';
+import { overlayFade } from '../../lib/motion';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
 
-/** Handoff mode: the diner finishes on SevenRooms in their own browser, then tells us if it worked. */
+/** In-app browser: the diner finishes on the restaurant's own page, embedded, then tells us if it worked. */
 export function HandoffCard() {
   const handoff = useStore(s => s.handoff);
-  const intent = useStore(s => s.chat.intent);
   const confirm = useStore(s => s.confirmHandoff); const dismiss = useStore(s => s.dismissHandoff);
-  const openAgain = useStore(s => s.openHandoff);
-  return <AnimatePresence>{handoff && <>
+  const [asking, setAsking] = useState(false);
+  return <AnimatePresence onExitComplete={() => setAsking(false)}>{handoff && <>
     <motion.div className="scrim" variants={overlayFade} initial="hidden" animate="show" exit="exit" onClick={dismiss} />
-    <div className="job-overlay"><motion.section className="job-card" variants={panelPop} initial="hidden" animate="show" exit="exit" role="dialog" aria-modal="true">
-      <button className="job-close" aria-label="Close" onClick={dismiss}><Icon name="x" size={18} /></button>
-      <header className="job-head"><div><p className="job-eyebrow">{handoff.venue.city} · {handoff.venue.neighborhood}</p><h2>Finish on SevenRooms</h2></div></header>
-      <p className="job-line"><strong>{handoff.venue.name}</strong> · {intent.date ? dayLabel(intent.date) : ''} at {handoff.slot.label} · {intent.partySize} guests</p>
-      <ol className="handoff-steps">
-        <li>The restaurant’s booking page opened in a new tab.</li>
-        <li>Pick <strong>{handoff.slot.label}</strong>, add your details, and confirm there.</li>
-        <li>Come back and let me know how it went.</li>
-      </ol>
-      <p className="muted quiet">Didn’t open? <a href={intent.date && intent.partySize ? sevenRoomsUrl(handoff.venue.slug, intent.date, intent.partySize, handoff.slot.time) : '#'} target="_blank" rel="noreferrer" onClick={() => openAgain(handoff.venue, handoff.slot)}>Open it again</a>.</p>
-      <div className="row-end"><Button variant="ghost" onClick={dismiss}>Didn’t book</Button><Button onClick={() => void confirm()}><Icon name="check" size={16} /> I booked it</Button></div>
+    <div className="browser-overlay"><motion.section className="browser" initial={{ opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16 }} transition={{ type: 'spring', stiffness: 420, damping: 34 }} role="dialog" aria-modal="true">
+      <header className="browser-bar">
+        <div className="browser-title"><Icon name="lock" size={13} /><span>sevenrooms.com</span></div>
+        <div className="browser-meta">{handoff.venue.name} · {handoff.slot.label}</div>
+        <div className="browser-actions">
+          <a href={handoff.url} target="_blank" rel="noreferrer" className="browser-pop" title="Open in a new tab"><Icon name="arrow" size={16} /></a>
+          <button className="browser-x" onClick={dismiss} aria-label="Close"><Icon name="x" size={16} /></button>
+        </div>
+      </header>
+      <iframe className="browser-frame" src={handoff.url} title={`Book ${handoff.venue.name} on SevenRooms`} allow="payment; publickey-credentials-get" />
+      <footer className="browser-foot">
+        {asking ? <>
+          <span className="muted quiet">Did you get the table at {handoff.slot.label}?</span>
+          <div className="browser-foot-btns"><Button variant="ghost" onClick={dismiss}>Not yet</Button><Button onClick={() => void confirm()}><Icon name="check" size={15} /> Yes, save it</Button></div>
+        </> : <>
+          <span className="muted quiet">Pick {handoff.slot.label}{handoff.venue.city ? `` : ''}, add your details and confirm above. {dayLabel(new URL(handoff.url).searchParams.get('date')!)}.</span>
+          <Button onClick={() => setAsking(true)}>I’m done</Button>
+        </>}
+      </footer>
     </motion.section></div>
   </>}</AnimatePresence>;
 }
