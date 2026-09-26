@@ -4,6 +4,7 @@ import { Pearl } from '../../ui/Pearl';
 import { Conversation } from './Conversation';
 import { Composer } from './Composer';
 import { IntentBar } from './IntentBar';
+import { QuickReplies } from './QuickReplies';
 import { Results } from '../venues/Results';
 import { ContactFields } from '../profile/ProfileForm';
 import { Button } from '../../ui/Button';
@@ -34,6 +35,7 @@ export function ConciergePage() {
   if (!hasResults) return <div className="chat-center">
     <div className="chat-column">
       <Conversation />
+      <QuickReplies />
       <IntentBar />
       <Composer />
     </div>
@@ -42,6 +44,7 @@ export function ConciergePage() {
   return <div className="stage">
     <section className="rail">
       <Conversation />
+      <QuickReplies />
       <IntentBar />
       <Composer />
     </section>

@@ -34,4 +34,5 @@ export const api = {
   cancel: (id: string) => fetch(`/api/book/${id}`, { method: 'DELETE' }).then(r => json<{ job: BookingJob }>(r)),
   job: (id: string) => fetch(`/api/book/${id}`).then(r => json<{ job: BookingJob }>(r)),
   bookings: () => fetch('/api/bookings').then(r => json<{ bookings: LedgerEntry[] }>(r)),
+  venues: () => fetch('/api/venues').then(r => json<{ venues: Venue[] }>(r)),
 };

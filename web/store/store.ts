@@ -37,6 +37,10 @@ export type Store = {
 
   bookings: LedgerEntry[];
   loadBookings: () => Promise<void>;
+
+  /** Covered areas for quick-reply chips: each city with its neighborhoods, cities first. */
+  areas: { city: string; neighborhoods: string[] }[];
+  loadAreas: () => Promise<void>;
 };
 
 function initialTheme(): Theme {
@@ -127,6 +131,16 @@ export const useStore = create<Store>((set, get) => ({
 
   bookings: [],
   async loadBookings() { try { const { bookings } = await api.bookings(); set({ bookings }); } catch { /* ignore */ } },
+
+  areas: [],
+  async loadAreas() {
+    try {
+      const { venues } = await api.venues();
+      const byCity = new Map<string, string[]>();
+      for (const v of venues) { const list = byCity.get(v.city) ?? []; if (!list.includes(v.neighborhood)) list.push(v.neighborhood); byCity.set(v.city, list); }
+      set({ areas: [...byCity.entries()].map(([city, neighborhoods]) => ({ city, neighborhoods })) });
+    } catch { /* ignore */ }
+  },
 }));
 
 export const jobIsBusy = busy;

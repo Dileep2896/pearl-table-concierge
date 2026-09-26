@@ -10,10 +10,10 @@ import { fadeSwap } from './lib/motion';
 
 export function App() {
   const theme = useStore(s => s.theme); const page = useStore(s => s.page);
-  const loadProfile = useStore(s => s.loadProfile); const loadBookings = useStore(s => s.loadBookings);
+  const loadProfile = useStore(s => s.loadProfile); const loadBookings = useStore(s => s.loadBookings); const loadAreas = useStore(s => s.loadAreas);
   const error = useStore(s => s.error);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  useEffect(() => { void loadProfile(); void loadBookings(); }, [loadProfile, loadBookings]);
+  useEffect(() => { void loadProfile(); void loadBookings(); void loadAreas(); }, [loadProfile, loadBookings, loadAreas]);
 
   return <div className="shell">
     <Sidebar />
