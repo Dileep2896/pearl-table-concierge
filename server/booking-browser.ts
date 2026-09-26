@@ -59,7 +59,8 @@ export class SevenRoomsBooker {
     this.step('OPENING');
     const started = performance.now();
     const context = await this.contexts.context({ locale: 'en-US', timezoneId: input.timezone, viewport: { width: 430, height: 900 }, serviceWorkers: 'block' });
-    const page = await context.newPage(); page.setDefaultTimeout(15000);
+    // Reuse the browser's existing tab so a remote live view is watching the page Pearl actually drives.
+    const page = context.pages()[0] ?? await context.newPage(); page.setDefaultTimeout(15000);
     page.on('dialog', dialog => { void dialog.dismiss().catch(() => {}); });
     const session: Session = { context, page, policy: '' };
     // Surface the remote live view immediately so the diner watches Pearl fill the form.

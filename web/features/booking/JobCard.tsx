@@ -36,7 +36,7 @@ export function JobCard() {
         {job.state === 'READY' && job.prepared && <HoldRing seconds={Math.max(0, Math.round((Date.parse(job.prepared.holdExpiresAt) - Date.now()) / 1000))} total={280} label="held" />}
         {job.state === 'CONFIRMED' && <ConfirmSeal />}
       </header>
-      <p className="job-line"><strong>{job.request.venue.name}</strong> · {dayLabel(job.request.date)} at {timeLabel(job.request.time)} · {job.request.partySize} guests</p>
+      <p className="job-line"><strong>{job.request.venue.name}</strong> · {dayLabel(job.request.date)} at {timeLabel(job.request.time)} · {job.request.partySize} {job.request.partySize === 1 ? 'guest' : 'guests'}</p>
 
       {job.liveViewUrl && ['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) ? <div className="live-view">
         {needsHuman ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>One tick from you.</strong> Tick “I’m not a robot” in the browser below — Pearl is doing the rest.</span></p>
