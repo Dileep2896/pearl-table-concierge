@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chromium } from 'playwright';
 import { SevenRoomsBooker, extractReference } from '../server/booking-browser';
+import { BrowserPool } from '../server/browser-pool';
 
 // A tiny stand-in for the SevenRooms widget: search page -> Select modal -> checkout -> confirmation.
 const searchPage = (time: string) => `<!doctype html><body><h1>Fixture Bistro</h1>
@@ -33,12 +34,14 @@ async function fixtureBrowser(record: { posts: { url: string; body: string | nul
   };
   return browser;
 }
+/** A pool over the fixture browser: the booker gets a context per booking, exactly as in production. */
+const pool = (record: { posts: { url: string; body: string | null }[] }, options: { reference?: string; slot?: string; checkout?: string } = {}) => new BrowserPool({ launch: () => fixtureBrowser(record, options) });
 const request = { venue: 'fixture', date: '2026-10-02', time: '19:00', partySize: 2, contact: { firstName: 'Test', lastName: 'Diner', email: 'diner@example.org', phone: '+1 212 555 0100' } };
 
 describe('SevenRoomsBooker', () => {
   it('selects the time, fills the guest form, accepts the policy and submits once', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] }; const steps: string[] = [];
-    const booker = new SevenRoomsBooker({ launch: () => fixtureBrowser(record), onStep: step => steps.push(step) });
+    const booker = new SevenRoomsBooker({ contexts: pool(record), onStep: step => steps.push(step) });
     const result = await booker.book(request);
     expect(result.status, result.message).toBe('CONFIRMED'); expect(result.reference).toBe('ZX4Q9K');
     expect(result.policy).toMatch(/cancel at least 2 hours/);
@@ -48,13 +51,13 @@ describe('SevenRoomsBooker', () => {
   });
   it('stops when the requested time is not on the page', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
-    const booker = new SevenRoomsBooker({ launch: () => fixtureBrowser(record, { slot: '8:00 PM' }) });
+    const booker = new SevenRoomsBooker({ contexts: pool(record, { slot: '8:00 PM' }) });
     const result = await booker.book(request);
     expect(result.status).toBe('FAILED'); expect(result.code).toBe('SLOT_GONE'); expect(record.posts).toHaveLength(0);
   });
   it('prepare fills the form and holds without pressing Submit; confirm presses it once', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] }; const steps: string[] = [];
-    const booker = new SevenRoomsBooker({ launch: () => fixtureBrowser(record), onStep: step => steps.push(step) });
+    const booker = new SevenRoomsBooker({ contexts: pool(record), onStep: step => steps.push(step) });
     const prepared = await booker.prepare(request);
     expect(prepared.status).toBe('READY'); expect(prepared.holdSeconds).toBeGreaterThan(0);
     expect(prepared.values).toMatchObject({ firstName: 'Test', emailAddress: 'diner@example.org', phoneNumber: '2125550100' });
@@ -67,28 +70,28 @@ describe('SevenRoomsBooker', () => {
   });
   it('close releases a prepared session and confirm then refuses', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
-    const booker = new SevenRoomsBooker({ launch: () => fixtureBrowser(record) });
+    const booker = new SevenRoomsBooker({ contexts: pool(record) });
     expect((await booker.prepare(request)).status).toBe('READY');
     await booker.close();
     expect((await booker.confirm()).code).toBe('NOT_PREPARED'); expect(record.posts).toHaveLength(1);
   });
   it('stops before filling when the checkout renders a card frame', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
-    const booker = new SevenRoomsBooker({ launch: () => fixtureBrowser(record, { checkout: checkoutPage.replace(hiddenStripe, hiddenStripe + visibleStripe) }) });
+    const booker = new SevenRoomsBooker({ contexts: pool(record, { checkout: checkoutPage.replace(hiddenStripe, hiddenStripe + visibleStripe) }) });
     const result = await booker.book(request);
     expect(result.status).toBe('FAILED'); expect(result.code).toBe('PAYMENT_REQUIRED'); expect(record.posts.map(p => p.url)).toEqual(['/api-yoa/dining/hold/add']);
   });
   it('refuses venues whose cancellation policy charges a fee unless told otherwise', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
     const feePage = checkoutPage.replace('Please cancel at least 2 hours ahead so we can offer the table to another guest.', 'No shows or late cancellations are subject to a fee of $55 per person applied to the credit card on file.');
-    const strict = await new SevenRoomsBooker({ launch: () => fixtureBrowser(record, { checkout: feePage }) }).book(request);
+    const strict = await new SevenRoomsBooker({ contexts: pool(record, { checkout: feePage }) }).book(request);
     expect(strict.status).toBe('FAILED'); expect(strict.code).toBe('CANCELLATION_FEE'); expect(strict.policy).toMatch(/\$55/); expect(strict.screenshot?.byteLength).toBeGreaterThan(100);
     expect(record.posts.some(p => p.url.endsWith('/book'))).toBe(false);
-    const relaxed = await new SevenRoomsBooker({ launch: () => fixtureBrowser(record, { checkout: feePage }), requireFreeCancellation: false }).book(request);
+    const relaxed = await new SevenRoomsBooker({ contexts: pool(record, { checkout: feePage }), requireFreeCancellation: false }).book(request);
     expect(relaxed.status).toBe('CONFIRMED');
   });
   it('rejects bad contact details before opening a browser', async () => {
-    const booker = new SevenRoomsBooker({ launch: async () => { throw new Error('should not launch'); } });
+    const booker = new SevenRoomsBooker({ contexts: { context: async () => { throw new Error('should not open a context'); } } });
     await expect(booker.book({ ...request, contact: { ...request.contact, email: 'nope' } })).rejects.toThrow();
   });
   it('extracts references from responses or page text', () => {

@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ProfileStore, isComplete } from '../server/profile';
 import { createApp } from '../server/app';
+import { AvailabilityService } from '../server/availability';
+import { BookingJobs } from '../server/jobs';
+import type { SevenRoomsBooker } from '../server/booking-browser';
 
 const dirs: string[] = [];
 async function tempStore() { const dir = await mkdtemp(join(tmpdir(), 'pearl-profile-')); dirs.push(dir); return new ProfileStore(join(dir, 'nested', 'profile.json')); }
@@ -25,7 +28,7 @@ describe('profile store', () => {
     expect(isComplete({ firstName: 'A', lastName: 'B', email: 'a@b.co', phone: '12345' })).toBe(false);
   });
   it('serves and updates the profile over the API', async () => {
-    const app = createApp({ useCodex: false, profiles: await tempStore() });
+    const app = createApp({ useCodex: false, profiles: await tempStore(), availability: new AvailabilityService(), jobs: new BookingJobs({ booker: () => ({} as SevenRoomsBooker) }) });
     expect(await (await app.request('/api/profile')).json()).toEqual({ profile: { firstName: '', lastName: '', email: '', phone: '' }, complete: false });
     const put = await app.request('/api/profile', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ firstName: 'Test', lastName: 'Diner', email: 'diner@example.org', phone: '2125550100' }) });
     expect(put.status).toBe(200); expect((await put.json()).complete).toBe(true);

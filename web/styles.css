@@ -69,3 +69,7 @@ button.ghost { font: inherit; background: transparent; border: 1px solid var(--l
 .pickbtn.on { outline: 2px solid var(--ink); }
 .others summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .others .chips { margin-top: 8px; }
+.bookings { margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+.bookings summary { cursor: pointer; color: var(--muted); }
+.bookings ul { margin: 8px 0 4px; padding-left: 18px; }
+.bookings li { margin: 4px 0; }

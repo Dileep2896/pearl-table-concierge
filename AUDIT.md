@@ -1,0 +1,30 @@
+# Audit and redesign, 26 September 2026
+
+A review of the demo as first extracted from the monorepo, what was wrong with it, and what changed.
+
+## Findings
+
+| # | Drawback | Risk | Fix |
+|---|---|---|---|
+| 1 | `app.ts` mixed HTTP routing, the booking state machine, timers and browser lifecycle in one file, with an ad-hoc `finish()` that had to be tricked into allowed transitions. | Hard to reason about; state bugs hide in route handlers. | `server/jobs.ts`: a `BookingJobs` service with an explicit transition table. Illegal moves are logged and refused. The API only translates HTTP into service calls. |
+| 2 | A fresh Chromium was launched for every booking (~1.5 s) and closed after. | Slow tap-to-hold; memory churn; no shutdown hook. | `server/browser-pool.ts`: one browser per server, lazily launched, relaunched if it dies; each booking gets an isolated context (~100 ms). Graceful shutdown releases holds and closes the browser. |
+| 3 | Availability was refetched from SevenRooms on every chat turn with unbounded parallelism. | Hammering a third party; risk of rate limiting during a demo. | `server/availability.ts`: 20 s cache keyed by query, fan-out capped at 6 concurrent requests, failures not cached, timings logged. |
+| 4 | Codex ran one process per request with no limit and no memory. | Concurrent turns slow each other; retries pay twice. | `CodexQueue`: calls serialised, identical prompts answered from a 5-minute cache, overload rejected cleanly so the parser takes over. |
+| 5 | Finished jobs were never removed, and a 300 KB screenshot was embedded in the job JSON and re-sent on every poll. | Memory grows forever; polling gets heavy. | Jobs swept 30 min after finishing. Evidence served once from `/api/book/:id/evidence.png`; the job carries only `hasEvidence`. |
+| 6 | Confirmed bookings lived only in memory. | A restart lost the demo's proof of work. | `server/ledger.ts`: confirmed bookings appended to `.local/bookings.json` (no contact details), listed at `/api/bookings` and in the page. |
+| 7 | Env vars were read wherever they were used; no logger; no error or not-found handlers; unbounded request bodies. | Inconsistent errors, stack traces to clients, hard to operate. | `server/config.ts` (one typed config), `server/logger.ts` (JSON lines with request ids and timings), `ApiError` with an `onError` mapping, JSON 404s, 64 KB body limit. |
+| 8 | The whole UI was one 160-line component with `setInterval` polling. | Hard to extend; polling never slowed down. | `web/hooks` (`useProfile`, `useBookingJob`) and `web/components` (`Results`, `JobPanel`, `ContactFields`, `Bookings`). Polling backs off to 3 s while a hold waits. |
+| 9 | `/api/health` said nothing about the browser or the model. | No way to see readiness before a demo. | Health reports job counts, browser pool status and the Codex queue. |
+| 10 | Tests covered routes but not caching, queueing, retention or persistence. | Regressions in the new layers would be silent. | `tests/services.test.ts` plus extended API tests: 43 tests. |
+
+## What did not change
+
+- The booking contract: prepare fills and holds, only the diner's confirm presses Submit, holds expire, cancel releases.
+- The guardrails: no cards, no fee policies, a screenshot of the restaurant's page as evidence when Pearl stops.
+- Single-user, single-machine scope. There is still one live browser session at a time and one local profile; that is deliberate for a demo.
+
+## Still open (next steps)
+
+- Per-user sessions and a real datastore if this ever serves more than one diner.
+- The hourly canary per venue (see `ARCHITECTURE.md`, diagram 7).
+- Direct hold calls for 10:00:00 releases.

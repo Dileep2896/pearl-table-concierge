@@ -1,4 +1,6 @@
-import { chromium, type Browser, type BrowserContext, type Page, type Response } from 'playwright';
+import type { BrowserContext, Page, Response } from 'playwright';
+import { BrowserPool, type ContextSource } from './browser-pool';
+import { log } from './logger';
 import { SEVENROOMS_BASE, searchPageUrl, timeLabel, dateSchema, timeSchema } from './sevenrooms';
 import { z } from 'zod/v4';
 
@@ -33,7 +35,7 @@ export function extractReference(source: unknown, pageText = ''): string | undef
   return text?.[1];
 }
 
-type Session = { browser: Browser; context: BrowserContext; page: Page; bookResponse?: unknown; holdResponse?: unknown; policy: string; policyShot?: Buffer };
+type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; holdResponse?: unknown; policy: string; policyShot?: Buffer };
 
 /**
  * Drives the public SevenRooms guest widget exactly as a diner would, in two phases.
@@ -43,7 +45,8 @@ type Session = { browser: Browser; context: BrowserContext; page: Page; bookResp
  */
 export class SevenRoomsBooker {
   private session?: Session;
-  constructor(private options: { launch?: () => Promise<Browser>; base?: string; onStep?: (step: BookingStep, note?: string) => void; headless?: boolean; requireFreeCancellation?: boolean } = {}) {}
+  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean } = {}) {}
+  private get contexts(): ContextSource { return this.options.contexts ?? (this.options.contexts = new BrowserPool()); }
   private step(step: BookingStep, note?: string) { this.options.onStep?.(step, note); }
   get ready() { return Boolean(this.session); }
 
@@ -52,11 +55,11 @@ export class SevenRoomsBooker {
     const base = this.options.base ?? SEVENROOMS_BASE;
     await this.close();
     this.step('OPENING');
-    const browser = await (this.options.launch?.() ?? chromium.launch({ headless: this.options.headless ?? true, timeout: 20000 }));
-    const context = await browser.newContext({ locale: 'en-US', timezoneId: input.timezone, viewport: { width: 430, height: 900 }, serviceWorkers: 'block' });
+    const started = performance.now();
+    const context = await this.contexts.context({ locale: 'en-US', timezoneId: input.timezone, viewport: { width: 430, height: 900 }, serviceWorkers: 'block' });
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on('dialog', dialog => { void dialog.dismiss().catch(() => {}); });
-    const session: Session = { browser, context, page, policy: '' };
+    const session: Session = { context, page, policy: '' };
     page.on('response', (response: Response) => {
       const url = response.url();
       if (!url.includes('/api-yoa/')) return;
@@ -95,6 +98,7 @@ export class SevenRoomsBooker {
       const values = Object.fromEntries(await page.locator('input[name="firstName"], input[name="lastName"], input[name="emailAddress"], input[name="phoneNumber"]').evaluateAll(els => els.map(el => [(el as HTMLInputElement).name, (el as HTMLInputElement).value])));
       const holdSeconds = Number((session.holdResponse as { data?: { hold_duration_sec?: number } } | undefined)?.data?.hold_duration_sec) || 300;
       this.session = session;
+      log('info', 'booking_prepared', { venue: input.venue, ms: Math.round(performance.now() - started), holdSeconds });
       this.step('READY', `held ${holdSeconds}s`);
       return { status: 'READY', code: 'READY', message: 'The form is filled and the table is held. Confirm to submit.', policy: session.policy, values, holdSeconds, pageUrl: page.url() };
     } catch (error) {
@@ -103,7 +107,8 @@ export class SevenRoomsBooker {
       // Evidence: the policy dialog itself for a fee stop, otherwise the page as it looked when Pearl stopped.
       const screenshot = failure.code === 'CANCELLATION_FEE' && session.policyShot ? session.policyShot : await page.screenshot({ type: 'png', fullPage: true, timeout: 8000 }).catch(() => undefined);
       this.step('FAILED', failure.code);
-      await browser.close().catch(() => {});
+      log('info', 'booking_stopped', { venue: input.venue, code: failure.code, ms: Math.round(performance.now() - started) });
+      await context.close().catch(() => {});
       return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText, screenshot };
     }
   }
@@ -141,8 +146,8 @@ export class SevenRoomsBooker {
     return this.confirm();
   }
 
-  /** Closes the browser, which also releases the widget's hold. Safe to call any time. */
-  async close() { const session = this.session; this.session = undefined; await session?.browser.close().catch(() => {}); }
+  /** Closes this booking's browser context, which also releases the widget's hold. Safe to call any time. */
+  async close() { const session = this.session; this.session = undefined; await session?.context.close().catch(() => {}); }
 
   /**
    * Stripe.js mounts hidden utility iframes on every SevenRooms checkout, so only a rendered card frame

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { createApp, closestSlot, summarize } from '../server/app';
-import type { Slot } from '../server/sevenrooms';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createApp } from '../server/app';
+import { BookingJobs, type JobsOptions } from '../server/jobs';
+import { AvailabilityService, closestSlot, summarize } from '../server/availability';
+import { ProfileStore } from '../server/profile';
+import { BookingLedger } from '../server/ledger';
 import type { SevenRoomsBooker, PrepareResult, BookingResult } from '../server/booking-browser';
+import type { Slot } from '../server/sevenrooms';
 
 /** A booker double that reports steps and resolves when the test says so. */
 function fakeBooker(script: { prepare?: PrepareResult; confirm?: BookingResult; delayMs?: number }) {
@@ -14,59 +21,94 @@ function fakeBooker(script: { prepare?: PrepareResult; confirm?: BookingResult; 
   };
   return booker as unknown as SevenRoomsBooker & { calls: string[] };
 }
+async function harness(booker: () => SevenRoomsBooker, jobsOptions: Partial<JobsOptions> = {}) {
+  const dir = await mkdtemp(join(tmpdir(), 'pearl-app-'));
+  const ledger = new BookingLedger(join(dir, 'bookings.json'));
+  const jobs = new BookingJobs({ booker, ledger, ...jobsOptions });
+  const app = createApp({ useCodex: false, availability: new AvailabilityService(), jobs, ledger, profiles: new ProfileStore(join(dir, 'profile.json')) });
+  return { app, jobs, ledger, cleanup: async () => { await jobs.close(); await rm(dir, { recursive: true, force: true }); } };
+}
 const body = JSON.stringify({ venue: 'miriamwestvillage', date: '2026-10-02', time: '19:00', partySize: 2, contact: { firstName: 'Test', lastName: 'Diner', email: 'diner@example.org', phone: '2125550100' } });
 const post = (app: ReturnType<typeof createApp>, path: string, payload?: string) => app.request(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload });
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+const jobOf = async (app: ReturnType<typeof createApp>, id: string) => (await (await app.request(`/api/book/${id}`)).json() as { job: { state: string; prepared?: { policy: string; holdExpiresAt: string }; result?: { code: string; reference?: string; hasEvidence?: boolean } } }).job;
 
 describe('booking API', () => {
-  it('prepares, waits for confirmation, then submits exactly once', async () => {
+  it('prepares, waits for confirmation, submits exactly once, and records the booking', async () => {
     const booker = fakeBooker({});
-    const app = createApp({ useCodex: false, booker: () => booker });
-    const started = await post(app, '/api/book', body); expect(started.status).toBe(202);
-    const { job } = await started.json() as { job: { id: string; state: string } };
-    expect(job.state).toBe('PREPARING');
-    await wait(30);
-    let current = (await (await app.request(`/api/book/${job.id}`)).json() as { job: { state: string; prepared?: { policy: string; holdExpiresAt: string } } }).job;
-    expect(current.state).toBe('READY'); expect(current.prepared?.policy).toMatch(/2 hours/); expect(Date.parse(current.prepared!.holdExpiresAt)).toBeGreaterThan(Date.now());
-    expect(booker.calls).toEqual(['prepare']);
-    const confirmed = await post(app, `/api/book/${job.id}/confirm`); expect(confirmed.status).toBe(202);
-    await wait(30);
-    current = (await (await app.request(`/api/book/${job.id}`)).json() as { job: { state: string; result?: { reference?: string } } }).job as typeof current;
-    expect(current.state).toBe('CONFIRMED'); expect((current as { result?: { reference?: string } }).result?.reference).toBe('REF123');
-    expect(booker.calls).toEqual(['prepare', 'confirm', 'close']);
-    expect((await post(app, `/api/book/${job.id}/confirm`)).status).toBe(409);
+    const h = await harness(() => booker);
+    try {
+      const started = await post(h.app, '/api/book', body); expect(started.status).toBe(202);
+      expect(started.headers.get('x-request-id')).toBeTruthy();
+      const { job } = await started.json() as { job: { id: string; state: string } };
+      expect(job.state).toBe('PREPARING');
+      await wait(30);
+      let current = await jobOf(h.app, job.id);
+      expect(current.state).toBe('READY'); expect(current.prepared?.policy).toMatch(/2 hours/); expect(Date.parse(current.prepared!.holdExpiresAt)).toBeGreaterThan(Date.now());
+      expect(booker.calls).toEqual(['prepare']);
+      expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(202);
+      await wait(30);
+      current = await jobOf(h.app, job.id);
+      expect(current.state).toBe('CONFIRMED'); expect(current.result?.reference).toBe('REF123'); expect(current.result?.hasEvidence).toBe(false);
+      expect(booker.calls).toEqual(['prepare', 'confirm', 'close']);
+      expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(409);
+      const bookings = (await (await h.app.request('/api/bookings')).json() as { bookings: { reference: string; venueName: string }[] }).bookings;
+      expect(bookings).toHaveLength(1); expect(bookings[0]).toMatchObject({ reference: 'REF123', venueName: 'Miriam West Village' });
+      expect((await h.app.request(`/api/book/${job.id}/evidence.png`)).status).toBe(404);
+    } finally { await h.cleanup(); }
   });
   it('cancel releases the hold and a new pick replaces a pending one', async () => {
     const first = fakeBooker({}); const second = fakeBooker({}); let n = 0;
-    const app = createApp({ useCodex: false, booker: () => (n++ === 0 ? first : second) });
-    const { job: a } = await (await post(app, '/api/book', body)).json() as { job: { id: string } };
-    await wait(30);
-    const { job: b } = await (await post(app, '/api/book', body)).json() as { job: { id: string } };
-    expect((await (await app.request(`/api/book/${a.id}`)).json() as { job: { state: string } }).job.state).toBe('CANCELLED');
-    expect(first.calls).toEqual(['prepare', 'close']);
-    await wait(30);
-    const cancelled = await app.request(`/api/book/${b.id}`, { method: 'DELETE' }); expect(cancelled.status).toBe(200);
-    expect(second.calls).toEqual(['prepare', 'close']);
-    expect((await post(app, `/api/book/${b.id}/confirm`)).status).toBe(409);
+    const h = await harness(() => (n++ === 0 ? first : second));
+    try {
+      const { job: a } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30);
+      const { job: b } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      expect((await jobOf(h.app, a.id)).state).toBe('CANCELLED');
+      expect(first.calls).toEqual(['prepare', 'close']);
+      await wait(30);
+      expect((await h.app.request(`/api/book/${b.id}`, { method: 'DELETE' })).status).toBe(200);
+      expect(second.calls).toEqual(['prepare', 'close']);
+      expect((await post(h.app, `/api/book/${b.id}/confirm`)).status).toBe(409);
+    } finally { await h.cleanup(); }
   });
-  it('fails the job when preparation reports a problem and never confirms', async () => {
-    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'CANCELLATION_FEE', message: 'fee' } });
-    const app = createApp({ useCodex: false, booker: () => booker });
-    const { job } = await (await post(app, '/api/book', body)).json() as { job: { id: string } };
-    await wait(30);
-    const current = (await (await app.request(`/api/book/${job.id}`)).json() as { job: { state: string; result?: { code: string } } }).job;
-    expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('CANCELLATION_FEE');
-    expect((await post(app, `/api/book/${job.id}/confirm`)).status).toBe(409);
+  it('fails the job with evidence when preparation stops, and never confirms', async () => {
+    const booker = fakeBooker({ prepare: { status: 'FAILED', code: 'CANCELLATION_FEE', message: 'fee', screenshot: Buffer.from('png-bytes') } });
+    const h = await harness(() => booker);
+    try {
+      const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30);
+      const current = await jobOf(h.app, job.id);
+      expect(current.state).toBe('FAILED'); expect(current.result?.code).toBe('CANCELLATION_FEE'); expect(current.result?.hasEvidence).toBe(true);
+      const image = await h.app.request(`/api/book/${job.id}/evidence.png`);
+      expect(image.status).toBe(200); expect(image.headers.get('content-type')).toBe('image/png'); expect(Buffer.from(await image.arrayBuffer()).toString()).toBe('png-bytes');
+      expect((await post(h.app, `/api/book/${job.id}/confirm`)).status).toBe(409);
+      expect((await (await h.app.request('/api/bookings')).json() as { bookings: unknown[] }).bookings).toEqual([]);
+    } finally { await h.cleanup(); }
   });
-  it('expires a hold that is not confirmed in time', async () => {
+  it('expires a hold that is not confirmed in time, and sweeps finished jobs after retention', async () => {
     const booker = fakeBooker({ prepare: { status: 'READY', code: 'READY', message: 'ok', holdSeconds: 1 } });
-    const app = createApp({ useCodex: false, booker: () => booker, holdMarginMs: 0, minHoldMs: 0 });
-    const { job } = await (await post(app, '/api/book', body)).json() as { job: { id: string } };
-    await wait(30);
-    expect((await (await app.request(`/api/book/${job.id}`)).json() as { job: { state: string } }).job.state).toBe('READY');
-    await wait(1_200);
-    expect((await (await app.request(`/api/book/${job.id}`)).json() as { job: { state: string; result?: { code: string } } }).job).toMatchObject({ state: 'EXPIRED', result: { code: 'HOLD_EXPIRED' } });
-    expect(booker.calls).toEqual(['prepare', 'close']);
+    const h = await harness(() => booker, { holdMarginMs: 0, minHoldMs: 0, retentionMs: 50 });
+    try {
+      const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30);
+      expect((await jobOf(h.app, job.id)).state).toBe('READY');
+      await wait(1_200);
+      expect(await jobOf(h.app, job.id)).toMatchObject({ state: 'EXPIRED', result: { code: 'HOLD_EXPIRED' } });
+      expect(booker.calls).toEqual(['prepare', 'close']);
+      await wait(60); h.jobs.sweep();
+      expect((await h.app.request(`/api/book/${job.id}`)).status).toBe(404);
+    } finally { await h.cleanup(); }
+  });
+  it('answers bad input, unknown routes and oversized bodies with JSON errors', async () => {
+    const h = await harness(() => fakeBooker({}));
+    try {
+      expect((await post(h.app, '/api/book', '{"nope":1}')).status).toBe(400);
+      const missing = await h.app.request('/api/nothing'); expect(missing.status).toBe(404); expect((await missing.json() as { error: string }).error).toBe('NOT_FOUND');
+      expect((await post(h.app, '/api/chat', JSON.stringify({ messages: [{ role: 'user', text: 'x'.repeat(70_000) }], intent: {} }))).status).toBe(413);
+      const health = await (await h.app.request('/api/health')).json() as { ok: boolean; jobs: { total: number } };
+      expect(health.ok).toBe(true); expect(health.jobs.total).toBe(0);
+    } finally { await h.cleanup(); }
   });
 });
 

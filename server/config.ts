@@ -1,0 +1,50 @@
+import { join } from 'node:path';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** Every tunable in one place, read once at startup. Tests pass their own values. */
+export type Config = {
+  apiPort: number;
+  host: string;
+  useCodex: boolean;
+  dataDir: string;
+  profilePath: string;
+  ledgerPath: string;
+  prepareTimeoutMs: number;
+  holdMarginMs: number;
+  minHoldMs: number;
+  jobRetentionMs: number;
+  availabilityCacheMs: number;
+  availabilityConcurrency: number;
+  availabilityTimeoutMs: number;
+  codexTimeoutMs: number;
+  codexCacheMs: number;
+  requireFreeCancellation: boolean;
+  headless: boolean;
+};
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const num = (value: string | undefined, fallback: number) => { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : fallback; };
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const dataDir = env.PEARL_DATA_DIR || join(root, '.local');
+  return {
+    apiPort: num(env.PEARL_DEMO_API_PORT, 8788),
+    host: env.PEARL_DEMO_HOST || '127.0.0.1',
+    useCodex: env.PEARL_DEMO_AI !== 'off',
+    dataDir,
+    profilePath: env.PEARL_DEMO_PROFILE || join(dataDir, 'profile.json'),
+    ledgerPath: env.PEARL_DEMO_LEDGER || join(dataDir, 'bookings.json'),
+    prepareTimeoutMs: num(env.PEARL_PREPARE_TIMEOUT_MS, 120_000),
+    holdMarginMs: num(env.PEARL_HOLD_MARGIN_MS, 20_000),
+    minHoldMs: 30_000,
+    jobRetentionMs: num(env.PEARL_JOB_RETENTION_MS, 30 * 60_000),
+    availabilityCacheMs: num(env.PEARL_AVAILABILITY_CACHE_MS, 20_000),
+    availabilityConcurrency: num(env.PEARL_AVAILABILITY_CONCURRENCY, 6),
+    availabilityTimeoutMs: num(env.PEARL_AVAILABILITY_TIMEOUT_MS, 15_000),
+    codexTimeoutMs: num(env.PEARL_CODEX_TIMEOUT_MS, 60_000),
+    codexCacheMs: num(env.PEARL_CODEX_CACHE_MS, 5 * 60_000),
+    requireFreeCancellation: env.PEARL_ALLOW_FEE_VENUES !== '1',
+    headless: env.PEARL_HEADED !== '1',
+  };
+}

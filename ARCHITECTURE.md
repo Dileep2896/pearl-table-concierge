@@ -7,13 +7,17 @@ All diagrams are Mermaid and render on GitHub. The same sources are rendered to 
 ```mermaid
 flowchart LR
   D([Diner]) --> UI[React web page<br/>Vite · port 5180]
-  UI -->|/api| API[Hono API<br/>port 8788]
+  UI -->|/api| API[Hono API<br/>routing · errors · request log]
   API --> CH[Chat<br/>parser first, Codex when available]
-  CH --> CX[(Codex CLI<br/>local, no API key)]
-  API --> AV[Availability client]
+  CH --> CQ[Codex queue<br/>serialised · 5 min cache]
+  CQ --> CX[(Codex CLI<br/>local, no API key)]
+  API --> AV[Availability service<br/>20 s cache · 6 in flight]
   AV -->|GET widget/range| SR[(SevenRooms<br/>public widget)]
-  API --> BK[Booking driver<br/>Playwright Chromium]
-  BK -->|drives the guest checkout| SR
+  API --> JB[Booking jobs<br/>state machine · timers · retention]
+  JB --> BK[Booking driver<br/>prepare / confirm]
+  BK --> BP[Browser pool<br/>one Chromium, a context per booking]
+  BP -->|drives the guest checkout| SR
+  JB --> LG[(Bookings ledger<br/>.local/bookings.json)]
   API --> PF[(Local profile<br/>.local/profile.json)]
   API --> VN[(Curated venues<br/>21 slugs, NY + SF)]
 ```

@@ -6,7 +6,8 @@ export type VenueAvailability = { venue: Venue; slots: Slot[]; pick?: Slot; erro
 export type ChatResponse = { reply: string; intent: Intent; ready: boolean; source: 'codex' | 'parser'; results: VenueAvailability[] | null };
 export type Contact = { firstName: string; lastName: string; email: string; phone: string };
 export type JobState = 'PREPARING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
-export type BookingJob = { id: string; state: JobState; steps: { step: string; note?: string; at: string }[]; request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact }; prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string }; result?: { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; screenshot?: string } };
+export type BookingJob = { id: string; state: JobState; steps: { step: string; note?: string; at: string }[]; request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact }; prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string }; result?: { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean } };
+export type LedgerEntry = { id: string; confirmedAt: string; venue: string; venueName: string; city: string; date: string; time: string; partySize: number; reference?: string; pageUrl?: string };
 
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
@@ -22,6 +23,7 @@ export const api = {
   confirm: (id: string) => fetch(`/api/book/${id}/confirm`, { method: 'POST' }).then(r => json<{ job: BookingJob }>(r)),
   cancel: (id: string) => fetch(`/api/book/${id}`, { method: 'DELETE' }).then(r => json<{ job: BookingJob }>(r)),
   job: (id: string) => fetch(`/api/book/${id}`).then(r => json<{ job: BookingJob }>(r)),
+  bookings: () => fetch('/api/bookings').then(r => json<{ bookings: LedgerEntry[] }>(r)),
 };
 export const timeLabel = (time: string) => { const [h, m] = time.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
 export const dayLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });

@@ -14,6 +14,24 @@ npm run demo            # API on http://127.0.0.1:8788 and web on http://localho
 PEARL_DEMO_AI=off npm run demo   # skip Codex, use the deterministic parser only
 ```
 
+## Configuration
+
+Everything is an environment variable with a safe default (see `server/config.ts`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PEARL_DEMO_AI` | on | `off` uses the built-in parser only |
+| `PEARL_DEMO_API_PORT` / `PEARL_DEMO_WEB_PORT` | 8788 / 5180 | Ports |
+| `PEARL_DATA_DIR` | `.local` | Profile and bookings ledger |
+| `PEARL_AVAILABILITY_CACHE_MS` | 20000 | How long a venue lookup is reused |
+| `PEARL_AVAILABILITY_CONCURRENCY` | 6 | Parallel SevenRooms requests |
+| `PEARL_JOB_RETENTION_MS` | 1800000 | How long finished bookings stay readable |
+| `PEARL_ALLOW_FEE_VENUES` | unset | `1` disables the no-fee guard |
+| `PEARL_HEADED` | unset | `1` shows the booking browser |
+| `PEARL_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
+
+`GET /api/health` reports the browser pool, the Codex queue and job counts. `GET /api/bookings` lists confirmed reservations from the local ledger.
+
 ## Test
 
 ```bash
@@ -26,6 +44,7 @@ The booking driver test runs Chromium against a local stand-in for the widget, s
 
 - `DEMO.md`: what was built, the token strategy, and the cost / time / breakage / scale / cuts answers.
 - `ARCHITECTURE.md`: seven Mermaid diagrams (render on GitHub).
+- `AUDIT.md`: the system-design review and what it changed.
 
 ## Diner profile
 
