@@ -15,9 +15,11 @@ A web chat where a diner types a request in plain language, sees every open tabl
 **Flow, end to end**
 
 1. **Understand.** The message goes through a deterministic parser (dates, time windows, party size, neighbourhood). When Codex is available it also goes to the model for a natural reply and looser phrasing; the model's answer is validated and merged over the parser's, so a bad model answer can never break a turn.
-2. **Find tables.** If the diner named one time ("at 7"), Pearl picks the closest bookable table at each restaurant and the diner only chooses the restaurant; a window ("7–9pm") shows every open time. One HTTP GET per venue to SevenRooms' widget endpoint, in parallel across the curated venues for that area, filtered to the requested window. Bookable and request-only slots are shown separately.
-3. **Prepare.** On tap, a headless Chromium opens the restaurant's own page, selects the time (the widget holds the table for 5 minutes), reads the cancellation policy, checks for card fields, and fills the guest form from a locally stored profile. It stops there.
+2. **Find tables.** If the diner named one time ("at 7"), Pearl picks the closest bookable table at each restaurant and the diner only chooses the restaurant; a window ("7–9pm") shows every open time. One HTTP GET per venue to SevenRooms' widget endpoint, fanned out with at most six in flight and cached for 20 seconds, so a repeated question costs nothing. Bookable and request-only slots are shown separately.
+3. **Prepare.** On tap, an isolated context in the server's single shared Chromium opens the restaurant's own page, selects the time (the widget holds the table for 5 minutes), reads the cancellation policy, checks for card fields, and fills the guest form from a locally stored profile. It stops there.
 4. **Confirm.** The page shows what was filled, the policy and a hold countdown, with Confirm and Cancel. Only Confirm presses the restaurant's Submit, once. Cancel releases the hold.
+
+**Services.** The server is a small set of single-purpose modules: a booking state machine with an explicit transition table (`jobs.ts`), a browser pool (`browser-pool.ts`), a cached availability service, a Codex queue that serialises and caches model calls, a bookings ledger on disk, and one typed config. The HTTP layer only translates requests into service calls; every error has a stable code, every request a log line with an id and a timing. `AUDIT.md` records the review that produced this shape.
 
 **Guardrails.** Pearl never enters payment details, refuses venues whose policy mentions a fee or a card on file, never books without the explicit confirm click, and every browser step has a timeout so nothing can hang. When it stops, it shows a screenshot of the restaurant's page at that moment (the policy dialog, the card form) as evidence of what it saw and why it refused, with a link to the live page.
 
@@ -56,7 +58,7 @@ Today the model path runs through the Codex CLI on a subscription, so the metere
 | Item | Marginal cost | Notes |
 |---|---|---|
 | One search | $0 | 6–12 HTTP GETs to a public endpoint, ~0.5–0.8 s |
-| One booking | ~$0.002 of compute | ~10 s of headless Chromium on a shared worker |
+| One booking | ~$0.002 of compute | ~8 s of a shared headless Chromium; one browser serves every booking |
 | One chat turn, parser | $0 | |
 | One chat turn, Sonnet 5 metered | ~$0.0025 (~$0.0014 cached) | Haiku 4.5 about half; Opus 5 about 2.5× |
 
@@ -80,10 +82,10 @@ Measured today on a laptop:
 |---|---|---|
 | Understand the message | 0.2 ms | ~8 s |
 | Find tables across 6 venues | 0.5–0.8 s | same |
-| Tap → form filled, table held | ~6 s | same |
+| Tap → form filled, table held | ~4–5 s (shared browser, no launch cost) | same |
 | Confirm → restaurant's response | ~3–10 s (submit + widget round trip) | same |
 | **Ask → times** | **under 1 s** | **~9 s** |
-| **Ask → booked, with a human confirming** | **~15 s plus the human** | **~25 s plus the human** |
+| **Ask → booked, with a human confirming** | **~12 s plus the human** | **~22 s plus the human** |
 
 **Hot tables: not yet.** A 10:00:00 release is a race against people who have the page open and against bots that call the hold endpoint directly. Our tap-to-hold path is ~6 s because it renders the page and clicks like a person. Two upgrades would make it competitive: poll the availability endpoint at ~1 Hz from 09:59:50 and call the widget's `hold/add` endpoint directly the moment a slot appears (PolyAI reports ~1.5 s bookings this way), then fill and submit in a pre-warmed browser. The confirm step stays human unless the diner pre-authorises the booking in advance, which is a product decision, not a technical one.
 
@@ -100,7 +102,7 @@ Measured today on a laptop:
 | Rate limiting or IP block | 4xx/5xx from the endpoint | Venues show "could not check"; bookings fail at open |
 | Restaurant leaves SevenRooms | Slug returns 400 | Venue shows "could not check" until removed |
 
-Every failure is a named code at a named step, logged as a structured `demo_booking_finished` event, and nothing is ever submitted on a failure path.
+Every failure is a named code at a named step, logged as a structured JSON event with a request id, and nothing is ever submitted on a failure path. `GET /api/health` reports the browser pool, the Codex queue and job counts, so readiness can be checked before a demo. Availability failures are not cached, so a blip clears on the next turn.
 
 **How we'd know before a diner does.** Today: only from those logs. V2, and cheap: a canary that runs every hour per venue: fetch availability, open the checkout in dry-run mode, verify the four inputs and the Submit button exist, release the hold. It costs a hold nobody wanted for a few seconds and would catch selector drift, captcha changes and blocks within an hour. Pair it with a version fingerprint of the widget's JS bundle so a redeploy raises a flag even before the canary fails.
 
@@ -129,7 +131,7 @@ What does not change: the chat layer, the profile, the confirm-before-submit con
 - Request-only slots. Shown but not tappable, because they need the restaurant to approve.
 - Venues that want a card or charge fees. Refused by policy.
 - Login flows, modify and cancel from within Pearl. Cancellation is via the restaurant's email.
-- Persistence and multi-user. Jobs are in memory, the profile is a local file, one browser at a time.
+- Multi-user. One diner profile, one live browser session at a time. Confirmed bookings do persist to a local ledger; in-flight jobs are in memory and swept after 30 minutes.
 - Screenshots in the UI. Replaced by the explicit confirm step.
 - The mobile app. The demo is a standalone web page.
 
@@ -145,12 +147,12 @@ What does not change: the chat layer, the profile, the confirm-before-submit con
 
 ## Architecture diagrams
 
-Seven Mermaid diagrams (system overview, booking sequence, job states, message understanding, checkout guardrails, scaling to five platforms, the V2 canary) are in `ARCHITECTURE.md` and render on GitHub.
+Seven Mermaid diagrams (system overview with the service layout, booking sequence, job states, message understanding, checkout guardrails, scaling to five platforms, the V2 canary) are in `ARCHITECTURE.md` and render on GitHub.
 
 ## Try it
 
 ```bash
 npm run demo                     # API on 127.0.0.1:8788, web on localhost:5180
 PEARL_DEMO_AI=off npm run demo   # deterministic parser only
-npm test                # 31 tests: parser, availability, driver against a local widget stand-in, API state machine
+npm test                # 43 tests: parser, availability cache and limiter, Codex queue, ledger, driver against a local widget stand-in, API state machine
 ```
