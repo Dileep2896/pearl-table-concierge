@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 type Level = 'debug' | 'info' | 'warn' | 'error';
 const order: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
-let threshold: Level = (process.env.PEARL_LOG_LEVEL as Level) || 'info';
+let threshold: Level = (process.env.TAVOLA_LOG_LEVEL as Level) || 'info';
 export function setLogLevel(level: Level) { threshold = level; }
 
 /** One JSON line per event. Never logs diner contact details or page contents. */

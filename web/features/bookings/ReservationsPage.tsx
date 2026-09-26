@@ -9,7 +9,7 @@ export function ReservationsPage() {
   const bookings = useStore(s => s.bookings);
   const setPage = useStore(s => s.setPage);
   return <div className="page">
-    <header className="page-head"><h1>Reservations</h1><p className="muted">Tables you’ve confirmed through Pearl.</p></header>
+    <header className="page-head"><h1>Reservations</h1><p className="muted">Tables you’ve confirmed through Tavola.</p></header>
     {!bookings.length ? (
       <div className="empty">
         <Icon name="book" size={30} />

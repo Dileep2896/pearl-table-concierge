@@ -1,4 +1,4 @@
-# Pearl table concierge — what we built, and the answers to the hard questions
+# Tavola table concierge — what we built, and the answers to the hard questions
 
 *Demo write-up, 26 September 2026. Companion to the running app in `.`.*
 
@@ -19,13 +19,13 @@ Type much. One loose sentence plus a few taps reaches results: the concierge ask
 **Flow, end to end**
 
 1. **Understand.** The message goes through a deterministic parser (dates, time windows, party size, neighbourhood). When a model is available it also goes to the model for a natural reply and looser phrasing; the model's answer is validated and merged over the parser's, so a bad model answer can never break a turn. The model is the Anthropic API when an `ANTHROPIC_API_KEY` is set (so it runs on a deployed server), the local Codex CLI otherwise, or nothing at all — the parser alone still works.
-2. **Find tables.** If the diner named one time ("at 7"), Pearl picks the closest bookable table at each restaurant and the diner only chooses the restaurant; a window ("7–9pm") shows every open time. One HTTP GET per venue to SevenRooms' widget endpoint, fanned out with at most six in flight and cached for 20 seconds, so a repeated question costs nothing. Bookable and request-only slots are shown separately.
+2. **Find tables.** If the diner named one time ("at 7"), Tavola picks the closest bookable table at each restaurant and the diner only chooses the restaurant; a window ("7–9pm") shows every open time. One HTTP GET per venue to SevenRooms' widget endpoint, fanned out with at most six in flight and cached for 20 seconds, so a repeated question costs nothing. Bookable and request-only slots are shown separately.
 3. **Prepare.** On tap, an isolated browser context — a local Chromium or a remote Browserbase cloud session — opens the restaurant's own page, selects the time (the widget holds the table for 5 minutes), reads the cancellation policy, fills the guest form from a locally stored profile, and then checks whether the venue still needs a card or a sign-in. It stops there, holding the table.
-4. **Confirm.** The page shows what was filled, the policy and a hold countdown, with Confirm and Cancel. Only Confirm presses the restaurant's Submit. SevenRooms' reCAPTCHA Enterprise rejects that first press from any automated browser (HTTP 400, "ReCaptcha server-side validation failed") and swaps in an "I'm not a robot" checkbox. On the cloud browser Pearl embeds Browserbase's interactive live view and the diner ticks the box in-app; Pearl detects the token and presses Submit again. If instead the venue needs a card or a sign-in, Pearl hands the diner that same live view to add the card (or log in) and book there, and records the confirmation — it never types the card itself. Cancel releases the hold.
+4. **Confirm.** The page shows what was filled, the policy and a hold countdown, with Confirm and Cancel. Only Confirm presses the restaurant's Submit. SevenRooms' reCAPTCHA Enterprise rejects that first press from any automated browser (HTTP 400, "ReCaptcha server-side validation failed") and swaps in an "I'm not a robot" checkbox. On the cloud browser Tavola embeds Browserbase's interactive live view and the diner ticks the box in-app; Tavola detects the token and presses Submit again. If instead the venue needs a card or a sign-in, Tavola hands the diner that same live view to add the card (or log in) and book there, and records the confirmation — it never types the card itself. Cancel releases the hold.
 
 **Services.** The server is a small set of single-purpose modules: a booking state machine with an explicit transition table (`jobs.ts`), a browser source (a local pool or Browserbase), a cached availability service, a chat backend (the Anthropic API or a Codex queue) with a short reply cache, a bookings ledger on disk, and one typed config. The HTTP layer only translates requests into service calls; every error has a stable code, every request a log line with an id and a timing. `AUDIT.md` records the review that produced this shape.
 
-**Guardrails.** Pearl never types a card number or a password, never books without the explicit confirm click, and every browser step has a timeout so nothing can hang. A cancellation fee is shown to the diner to accept or decline at confirm rather than a hard stop (strict mode restores the refusal). A venue that needs a card or a sign-in is finished by the diner in the embedded live view on the cloud browser, or, with no live view, stopped with a plain-language reason and a "Finish on SevenRooms" handoff.
+**Guardrails.** Tavola never types a card number or a password, never books without the explicit confirm click, and every browser step has a timeout so nothing can hang. A cancellation fee is shown to the diner to accept or decline at confirm rather than a hard stop (strict mode restores the refusal). A venue that needs a card or a sign-in is finished by the diner in the embedded live view on the cloud browser, or, with no live view, stopped with a plain-language reason and a "Finish on SevenRooms" handoff.
 
 **Coverage.** 21 validated venues: New York (West Village, Greenwich Village, Flatiron, Upper West Side) and San Francisco (Union Square, Jackson Square, Nob Hill, SoMa, Mission, Lower Haight, Financial District). Anywhere else is refused with a clear message rather than a fallback.
 
@@ -53,7 +53,7 @@ About 600 of those tokens are fixed instructions repeated every turn.
 2. **Prompt caching** on the fixed instructions. Cached reads bill at about a tenth of input price, cutting a Sonnet 5 turn from ~$0.0025 to ~$0.0014.
 3. **Right-sized model.** This is extraction, not reasoning. Haiku 4.5 handles it at half the Sonnet price.
 
-Locally the model path can run through the Codex CLI on a subscription, so the metered cost is $0 and the saving is latency: 0.2 ms versus ~8 s per turn. Deployed, it runs through the Anthropic API (`PEARL_AI_MODEL`, default `claude-sonnet-5`), where the per-turn numbers above apply and the parser still keeps most turns off the meter entirely.
+Locally the model path can run through the Codex CLI on a subscription, so the metered cost is $0 and the saving is latency: 0.2 ms versus ~8 s per turn. Deployed, it runs through the Anthropic API (`TAVOLA_AI_MODEL`, default `claude-sonnet-5`), where the per-turn numbers above apply and the parser still keeps most turns off the meter entirely.
 
 ## The five questions
 
@@ -101,7 +101,7 @@ Measured today on a laptop:
 |---|---|---|
 | Widget selectors change (`data-time`, `checkout-button-complete`, input names) | Prepare fails at that step | "The widget did not open the checkout" or "no times shown"; no hold, no booking |
 | New required field (birthday, postcode) | Submit disabled or rejected | `SUBMIT_DISABLED` / `WIDGET_REJECTED`; nothing booked |
-| reCAPTCHA rejects the automated submit (it does, every time) | First Submit gets HTTP 400, a checkbox appears | On the cloud browser the panel embeds Browserbase's live view and the diner ticks the box in-app; Pearl resubmits. `CAPTCHA_UNSOLVED` if nobody does in time; `CAPTCHA_REJECTED` when there is no way to show a checkbox |
+| reCAPTCHA rejects the automated submit (it does, every time) | First Submit gets HTTP 400, a checkbox appears | On the cloud browser the panel embeds Browserbase's live view and the diner ticks the box in-app; Tavola resubmits. `CAPTCHA_UNSOLVED` if nobody does in time; `CAPTCHA_REJECTED` when there is no way to show a checkbox |
 | Availability endpoint changes shape | Zod parse throws | Venue shows "could not check"; others still work |
 | Rate limiting or IP block | 4xx/5xx from the endpoint | Venues show "could not check"; bookings fail at open |
 | Restaurant leaves SevenRooms | Slug returns 400 | Venue shows "could not check" until removed |
@@ -133,8 +133,8 @@ What does not change: the chat layer, the profile, the confirm-before-submit con
 - OpenTable (Akamai) and Apify (cost). Both reachable only by paying or evading.
 - Restaurant search. Replaced by a curated, validated venue list; anywhere else is refused.
 - Request-only slots. Shown but not tappable, because they need the restaurant to approve.
-- Pearl typing a card or a password. It fills everything else; a card or sign-in venue is finished by the diner in the live view, or handed off. A cancellation fee is now shown to accept or decline rather than refused (strict mode still refuses).
-- Login flows, modify and cancel from within Pearl. Cancellation is via the restaurant's email.
+- Tavola typing a card or a password. It fills everything else; a card or sign-in venue is finished by the diner in the live view, or handed off. A cancellation fee is now shown to accept or decline rather than refused (strict mode still refuses).
+- Login flows, modify and cancel from within Tavola. Cancellation is via the restaurant's email.
 - Multi-user. One diner profile, one live browser session at a time. Confirmed bookings do persist to a local ledger; in-flight jobs are in memory and swept after 30 minutes.
 - Screenshots in the UI. Replaced by the explicit confirm step.
 - The mobile app. The demo is a standalone web page.
@@ -151,7 +151,7 @@ What does not change: the chat layer, the profile, the confirm-before-submit con
 
 ## Proof it works
 
-On 26 September 2026 the flow booked a real table end to end: Miriam West Village, Friday 2 October 2026, 7:00 PM, party of 2, reservation #XGYXY455VAU, confirmed by the restaurant by SMS. On that run reCAPTCHA accepted the first Submit; on other runs it showed the checkbox and waited for the tick. A card-required venue (The Big Four, Nob Hill) exercises the live-view finish: on the Browserbase cloud browser Pearl fills everything, holds the table, and shows the diner the embedded checkout to add the card and book. All paths are covered by tests against a local stand-in for the widget.
+On 26 September 2026 the flow booked a real table end to end: Miriam West Village, Friday 2 October 2026, 7:00 PM, party of 2, reservation #XGYXY455VAU, confirmed by the restaurant by SMS. On that run reCAPTCHA accepted the first Submit; on other runs it showed the checkbox and waited for the tick. A card-required venue (The Big Four, Nob Hill) exercises the live-view finish: on the Browserbase cloud browser Tavola fills everything, holds the table, and shows the diner the embedded checkout to add the card and book. All paths are covered by tests against a local stand-in for the widget.
 
 ## Architecture diagrams
 
@@ -161,7 +161,7 @@ Seven Mermaid diagrams (system overview with the service layout, booking sequenc
 
 ```bash
 npm run demo                     # API on 127.0.0.1:8788, web on localhost:5180
-PEARL_DEMO_AI=off npm run demo   # deterministic parser only, no model
+TAVOLA_DEMO_AI=off npm run demo   # deterministic parser only, no model
 npm test                # 56 tests: parser, availability cache and limiter, chat + Anthropic provider, ledger, driver against a local widget stand-in (incl. the card live-view finish), API state machine
 ```
 

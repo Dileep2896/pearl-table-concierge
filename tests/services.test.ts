@@ -59,7 +59,7 @@ describe('codex queue', () => {
 
 describe('ledger and config', () => {
   it('appends newest first and survives concurrent appends', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'pearl-ledger-'));
+    const dir = await mkdtemp(join(tmpdir(), 'tavola-ledger-'));
     try {
       const ledger = new BookingLedger(join(dir, 'nested', 'bookings.json'));
       expect(await ledger.list()).toEqual([]);
@@ -69,7 +69,7 @@ describe('ledger and config', () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   it('reads config from the environment with safe defaults', () => {
-    const config = loadConfig({ PEARL_DEMO_API_PORT: '9000', PEARL_DEMO_AI: 'off', PEARL_AVAILABILITY_CACHE_MS: 'nonsense', PEARL_ALLOW_FEE_VENUES: '1' });
+    const config = loadConfig({ TAVOLA_DEMO_API_PORT: '9000', TAVOLA_DEMO_AI: 'off', TAVOLA_AVAILABILITY_CACHE_MS: 'nonsense', TAVOLA_ALLOW_FEE_VENUES: '1' });
     expect(config.apiPort).toBe(9000); expect(config.useCodex).toBe(false); expect(config.availabilityCacheMs).toBe(20_000); expect(config.requireFreeCancellation).toBe(false);
     expect(loadConfig({}).host).toBe('127.0.0.1');
   });

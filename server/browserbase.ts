@@ -5,7 +5,7 @@ import { log } from './logger';
 
 /**
  * A remote browser per booking on Browserbase: a fresh session with proxies and captcha solving,
- * connected over CDP. This is what lets auto mode (Pearl fills and submits) run on a deployed server —
+ * connected over CDP. This is what lets auto mode (Tavola fills and submits) run on a deployed server —
  * Browserbase supplies the residential IP and solves the reCAPTCHA challenge in the background.
  */
 export class BrowserbaseSource implements ContextSource {

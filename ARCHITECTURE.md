@@ -1,4 +1,4 @@
-# Pearl demo — architecture diagrams
+# Tavola demo — architecture diagrams
 
 All diagrams are Mermaid and render on GitHub. The same sources are rendered to images for the presentation.
 
@@ -53,7 +53,7 @@ sequenceDiagram
     B-->>UI: live view · "add your card and book"
     Diner->>SR: adds card / signs in · books in the live view
     SR-->>UI: Reservation confirmed
-  else Pearl presses Submit
+  else Tavola presses Submit
     B->>SR: press Submit
     alt reCAPTCHA accepts
       SR-->>UI: Reservation confirmed
@@ -111,13 +111,13 @@ flowchart LR
   D --> F[Fill name, email, phone<br/>tick cancellation policy]
   F --> B{Card or sign-in<br/>required?}
   B -->|no| G[READY · wait for the diner]
-  B -->|yes, cloud browser| P[READY · live view<br/>diner adds card / signs in · Pearl never types it]
+  B -->|yes, cloud browser| P[READY · live view<br/>diner adds card / signs in · Tavola never types it]
   B -->|yes, no live view| B1[Stop: PAYMENT_REQUIRED / LOGIN_REQUIRED<br/>offer Finish on SevenRooms]
-  G -->|Confirm| H[Pearl presses Submit]
+  G -->|Confirm| H[Tavola presses Submit]
   P -->|diner books in the live view| K
   H --> J{reCAPTCHA<br/>verdict}
   J -->|accepted| K[Confirmed<br/>saved to ledger]
-  J -->|checkbox shown| L[Diner ticks the box in the live view<br/>Pearl presses Submit again]
+  J -->|checkbox shown| L[Diner ticks the box in the live view<br/>Tavola presses Submit again]
   L --> K
   J -->|nobody finishes in time| M[Stop: CAPTCHA_UNSOLVED<br/>try again]
   G -->|Cancel or 5 min| I[Close browser · hold released]

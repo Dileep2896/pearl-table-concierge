@@ -52,7 +52,7 @@ const app = createApp({
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
   const chatVia = config.ai.provider === 'anthropic' ? `Anthropic ${config.ai.model}` : config.ai.provider === 'codex' ? 'Codex CLI' : 'parser';
-  console.log(`Pearl ${webDir ? 'app + API' : 'demo API'}: http://${config.host}:${info.port} · web ${webDir ? 'served from dist/' : 'via Vite dev server'} · chat via ${chatVia} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
+  console.log(`Tavola ${webDir ? 'app + API' : 'demo API'}: http://${config.host}:${info.port} · web ${webDir ? 'served from dist/' : 'via Vite dev server'} · chat via ${chatVia} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
   log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: config.ai.provider, model: config.ai.provider === 'anthropic' ? config.ai.model : undefined, dataDir: config.dataDir });
 });
 

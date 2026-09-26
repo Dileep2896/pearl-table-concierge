@@ -20,12 +20,12 @@ export function JobCard() {
   const confirm = useStore(s => s.confirmBooking); const cancel = useStore(s => s.cancelBooking);
   const dismiss = useStore(s => s.dismissJob); const retry = useStore(s => s.retryJob);
   const needsHuman = Boolean(job?.state === 'SUBMITTING' && job.verification && !job.verification.passedAt);
-  // A card- or login-required venue Pearl filled but can't finish: the diner completes it in the live view.
+  // A card- or login-required venue Tavola filled but can't finish: the diner completes it in the live view.
   const needsDiner = job?.prepared?.needsDiner;
   useNow(Boolean(job && (job.state === 'READY' || needsHuman)));
   useEffect(() => {
-    if (!needsHuman) { document.title = 'Pearl — Table concierge'; return; }
-    document.title = '● Tick the box — Pearl';
+    if (!needsHuman) { document.title = 'Tavola — Table concierge'; return; }
+    document.title = '● Tick the box — Tavola';
     try { const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.type = 'sine'; o.frequency.value = 784; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.09, ctx.currentTime + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5); o.start(); o.frequency.setValueAtTime(1046, ctx.currentTime + 0.12); o.stop(ctx.currentTime + 0.5); setTimeout(() => void ctx.close(), 700); } catch { /* audio blocked */ }
   }, [needsHuman]);
 
@@ -41,9 +41,9 @@ export function JobCard() {
       <p className="job-line"><strong>{job.request.venue.name}</strong> · {dayLabel(job.request.date)} at {timeLabel(job.request.time)} · {job.request.partySize} {job.request.partySize === 1 ? 'guest' : 'guests'}</p>
 
       {job.liveViewUrl && ['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) ? <div className="live-view">
-        {needsHuman ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>One tick from you.</strong> Tick “I’m not a robot” in the browser below — Pearl is doing the rest.</span></p>
-          : needsDiner && (job.state === 'READY' || job.state === 'SUBMITTING') ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>{needsDiner === 'card' ? 'Your card, your tap.' : 'Sign in to finish.'}</strong> {needsDiner === 'card' ? 'Pearl filled everything else. Add your card in the browser below and book — Pearl records the confirmation.' : 'Pearl can’t sign in for you. Sign in and book in the browser below — Pearl records the confirmation.'}</span></p>
-          : <p className="live-label"><Icon name="lock" size={13} /> Watching Pearl book on a secure cloud browser{job.state === 'SUBMITTING' ? ' · placing your reservation' : job.state === 'READY' ? ' · ready for you' : '…'}</p>}
+        {needsHuman ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>One tick from you.</strong> Tick “I’m not a robot” in the browser below — Tavola is doing the rest.</span></p>
+          : needsDiner && (job.state === 'READY' || job.state === 'SUBMITTING') ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>{needsDiner === 'card' ? 'Your card, your tap.' : 'Sign in to finish.'}</strong> {needsDiner === 'card' ? 'Tavola filled everything else. Add your card in the browser below and book — Tavola records the confirmation.' : 'Tavola can’t sign in for you. Sign in and book in the browser below — Tavola records the confirmation.'}</span></p>
+          : <p className="live-label"><Icon name="lock" size={13} /> Watching Tavola book on a secure cloud browser{job.state === 'SUBMITTING' ? ' · placing your reservation' : job.state === 'READY' ? ' · ready for you' : '…'}</p>}
         <iframe className="live-frame tall" src={job.liveViewUrl} title="Live booking browser" allow="clipboard-write" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
       </div> : (job.state === 'PREPARING' || job.state === 'SUBMITTING') && <Stepper job={job} />}
       {needsHuman && !job.liveViewUrl ? <Verification job={job} secondsLeft={job.verification ? Math.max(0, Math.round((Date.parse(job.verification.expiresAt) - Date.now()) / 1000)) : 0} /> : job.verification?.passedAt && job.state === 'SUBMITTING' && <Verification job={job} secondsLeft={0} />}
@@ -51,7 +51,7 @@ export function JobCard() {
       {job.state === 'READY' && job.prepared && <div className="ready">
         <p className="who">Filling in as <strong>{job.prepared.values?.firstName ?? job.request.contact.firstName} {job.prepared.values?.lastName ?? job.request.contact.lastName}</strong> · {job.prepared.values?.emailAddress ?? job.request.contact.email}</p>
         {job.prepared.feeWarning ? <div className="notice warn"><Icon name="warn" size={16} /><span><strong>Cancellation fee.</strong> {job.prepared.feeWarning}</span></div> : job.prepared.policy && <p className="muted policy">“{job.prepared.policy}”</p>}
-        <p className="muted quiet">{needsDiner === 'card' ? 'Tap below, then add your card in the browser above and press Book. Pearl watches for the confirmation and never sees your card.' : needsDiner === 'login' ? 'Tap below, then sign in and book in the browser above. Pearl watches for the confirmation and never sees your password.' : `The table is held for you. Nothing is placed until you confirm.${job.prepared.feeWarning ? ' By confirming you accept the restaurant’s fee policy.' : ''}`}</p>
+        <p className="muted quiet">{needsDiner === 'card' ? 'Tap below, then add your card in the browser above and press Book. Tavola watches for the confirmation and never sees your card.' : needsDiner === 'login' ? 'Tap below, then sign in and book in the browser above. Tavola watches for the confirmation and never sees your password.' : `The table is held for you. Nothing is placed until you confirm.${job.prepared.feeWarning ? ' By confirming you accept the restaurant’s fee policy.' : ''}`}</p>
         <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Release</Button><Button onClick={() => void confirm()}>{needsDiner ? <><Icon name="lock" size={16} /> {needsDiner === 'card' ? 'I’ll add my card' : 'I’ll sign in'}</> : <><Icon name="check" size={16} /> {job.prepared.feeWarning ? 'Accept & confirm' : 'Confirm reservation'}</>}</Button></div>
       </div>}
 
@@ -60,7 +60,7 @@ export function JobCard() {
       {job.result?.reference && <p className="reference"><span className="reference-label">Reservation</span><span className="reference-code">{job.result.reference}</span></p>}
 
       {job.state === 'PREPARING' && <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Cancel</Button></div>}
-      {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <p className="muted quiet finish-hint">Pearl can’t finish this one for you. You can complete it yourself on the restaurant’s page.</p>}
+      {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <p className="muted quiet finish-hint">Tavola can’t finish this one for you. You can complete it yourself on the restaurant’s page.</p>}
       {!['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) && <div className="row-end">
         {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <Button onClick={() => useStore.getState().openHandoff(job.request.venue, { venue: job.request.venue.slug, time: job.request.time, label: timeLabel(job.request.time), timeIso: `${job.request.date} ${job.request.time}:00`, area: '', type: 'book' }, { date: job.request.date, partySize: job.request.partySize })}>Finish on SevenRooms</Button>}
         {retryable.includes(job.result?.code ?? '') && <Button variant="ghost" onClick={retry}>Try again</Button>}

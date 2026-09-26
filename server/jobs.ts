@@ -13,7 +13,7 @@ export type BookingJob = {
   request: { venue: Venue; date: string; time: string; partySize: number; contact: BookingRequest['contact'] };
   /** Live view of the remote (Browserbase) browser, so the diner can watch and tick the captcha. */
   liveViewUrl?: string;
-  /** Present once the form is filled: what Pearl typed and what the restaurant's policy says. */
+  /** Present once the form is filled: what Tavola typed and what the restaurant's policy says. */
   prepared?: { policy?: string; feeWarning?: string; needsDiner?: 'card' | 'login'; values?: Record<string, string>; holdExpiresAt: string };
   /** Set while the restaurant's page is waiting for the diner to tick the reCAPTCHA checkbox. */
   verification?: { requestedAt: string; expiresAt: string; passedAt?: string; liveViewUrl?: string };

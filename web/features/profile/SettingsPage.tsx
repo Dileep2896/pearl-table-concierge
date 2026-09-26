@@ -11,7 +11,7 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false); const [busy, setBusy] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(profile.saved);
   return <div className="page">
-    <header className="page-head"><h1>Settings</h1><p className="muted">Your details and how Pearl looks. Everything stays on this device.</p></header>
+    <header className="page-head"><h1>Settings</h1><p className="muted">Your details and how Tavola looks. Everything stays on this device.</p></header>
     <section className="card settings-card">
       <h3>Diner profile</h3>
       <p className="muted">Used to fill the restaurant’s booking form when you confirm a table.</p>

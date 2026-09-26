@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useStore } from '../../store/store';
-import { Pearl } from '../../ui/Pearl';
+import { Tavola } from '../../ui/Tavola';
 import { Conversation } from './Conversation';
 import { Composer } from './Composer';
 import { IntentBar } from './IntentBar';
@@ -24,7 +24,7 @@ export function ConciergePage() {
 
   if (!conversational && !hasResults) return <div className="intro-stage">
     <motion.div className="intro-inner" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}>
-      <Pearl size={72} />
+      <Tavola size={72} />
       <h1 className="intro-title">Good evening.<br />What are you in the mood for?</h1>
       <p className="intro-sub">Real tables at New York and San Francisco restaurants. Tell me a window like <em>“Friday 7 to 9”</em> to see every opening, or one time like <em>“Friday at 8”</em> and I’ll hold the closest table so you only choose the room.</p>
       <Composer large />

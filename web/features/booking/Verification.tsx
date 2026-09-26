@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import type { BookingJob } from '../../lib/api';
 import { clock } from '../../lib/format';
 import { Icon } from '../../ui/Icon';
-/** The one human step: the restaurant asks for a "not a robot" tick and Pearl waits. */
+/** The one human step: the restaurant asks for a "not a robot" tick and Tavola waits. */
 export function Verification({ job, secondsLeft }: { job: BookingJob; secondsLeft: number }) {
   if (!job.verification) return null;
   if (job.verification.passedAt) return <motion.p className="notice ok" initial={{ opacity: 0 }} animate={{ opacity: 1 }}><Icon name="check" size={16} /> Verified. Placing your reservation…</motion.p>;

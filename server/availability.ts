@@ -3,7 +3,7 @@ import { venuesFor, nearbyVenues, cityOf, type Venue } from './venues';
 import { describeIntent, type Intent } from './chat';
 import { log } from './logger';
 
-/** `pick` is Pearl's choice when the diner named one time: the bookable slot closest to it. */
+/** `pick` is Tavola's choice when the diner named one time: the bookable slot closest to it. */
 export type VenueAvailability = { venue: Venue; slots: Slot[]; pick?: Slot; error?: string };
 export type SearchIntent = Required<Pick<Intent, 'date' | 'timeFrom' | 'timeTo' | 'partySize'>> & Intent;
 

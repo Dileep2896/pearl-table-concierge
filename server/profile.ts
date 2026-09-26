@@ -19,7 +19,7 @@ export function isComplete(profile: Profile) {
 }
 
 export class ProfileStore {
-  constructor(private path = process.env.PEARL_DEMO_PROFILE || defaultProfilePath) {}
+  constructor(private path = process.env.TAVOLA_DEMO_PROFILE || defaultProfilePath) {}
   async read(): Promise<Profile> {
     try { return profileSchema.parse(JSON.parse(await readFile(this.path, 'utf8'))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { ...emptyProfile }; console.warn(JSON.stringify({ event: 'demo_profile_unreadable', message: (error as Error).message })); return { ...emptyProfile }; }

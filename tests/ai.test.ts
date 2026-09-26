@@ -40,15 +40,15 @@ describe('anthropic chat runner', () => {
 
 describe('chat provider selection', () => {
   it('prefers the Anthropic API when a key is set', () => {
-    const c = loadConfig({ ANTHROPIC_API_KEY: 'sk-test', PEARL_AI_MODEL: 'claude-haiku-4-5' } as NodeJS.ProcessEnv);
+    const c = loadConfig({ ANTHROPIC_API_KEY: 'sk-test', TAVOLA_AI_MODEL: 'claude-haiku-4-5' } as NodeJS.ProcessEnv);
     expect(c.ai.provider).toBe('anthropic'); expect(c.ai.model).toBe('claude-haiku-4-5'); expect(c.ai.apiKey).toBe('sk-test'); expect(c.useCodex).toBe(true);
   });
   it('falls back to Codex when no key is set', () => {
     const c = loadConfig({} as NodeJS.ProcessEnv);
     expect(c.ai.provider).toBe('codex'); expect(c.ai.model).toBe('claude-sonnet-5'); expect(c.useCodex).toBe(true);
   });
-  it('is parser-only when PEARL_DEMO_AI=off even with a key', () => {
-    const c = loadConfig({ PEARL_DEMO_AI: 'off', ANTHROPIC_API_KEY: 'sk-test' } as NodeJS.ProcessEnv);
+  it('is parser-only when TAVOLA_DEMO_AI=off even with a key', () => {
+    const c = loadConfig({ TAVOLA_DEMO_AI: 'off', ANTHROPIC_API_KEY: 'sk-test' } as NodeJS.ProcessEnv);
     expect(c.ai.provider).toBe('none'); expect(c.useCodex).toBe(false);
   });
 });

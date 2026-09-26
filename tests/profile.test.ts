@@ -9,7 +9,7 @@ import { BookingJobs } from '../server/jobs';
 import type { SevenRoomsBooker } from '../server/booking-browser';
 
 const dirs: string[] = [];
-async function tempStore() { const dir = await mkdtemp(join(tmpdir(), 'pearl-profile-')); dirs.push(dir); return new ProfileStore(join(dir, 'nested', 'profile.json')); }
+async function tempStore() { const dir = await mkdtemp(join(tmpdir(), 'tavola-profile-')); dirs.push(dir); return new ProfileStore(join(dir, 'nested', 'profile.json')); }
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 
 describe('profile store', () => {

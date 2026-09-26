@@ -16,12 +16,12 @@ export function codexEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 export class CodexUnavailable extends Error { constructor(message = 'Codex CLI did not return a reply.') { super(message); this.name = 'CodexUnavailable'; } }
 
 export async function runCodex(prompt: string, jsonSchema: unknown, options: { timeoutMs?: number; bin?: string } = {}): Promise<unknown> {
-  const directory = await mkdtemp(join(tmpdir(), 'pearl-demo-'));
+  const directory = await mkdtemp(join(tmpdir(), 'tavola-demo-'));
   try {
     const schemaPath = join(directory, 'schema.json'); const outputPath = join(directory, 'reply.json');
     await writeFile(schemaPath, JSON.stringify(jsonSchema), { mode: 0o600 });
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(options.bin || process.env.PEARL_CODEX_BIN || 'codex', codexArguments(directory, schemaPath, outputPath), { cwd: directory, env: codexEnvironment(process.env), shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+      const child = spawn(options.bin || process.env.TAVOLA_CODEX_BIN || 'codex', codexArguments(directory, schemaPath, outputPath), { cwd: directory, env: codexEnvironment(process.env), shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
       let stopped = false; let bytes = 0;
       const stop = () => { stopped = true; child.kill('SIGKILL'); };
       const timer = setTimeout(stop, options.timeoutMs ?? 60_000);

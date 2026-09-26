@@ -52,7 +52,7 @@ export type Store = {
 };
 
 function initialTheme(): Theme {
-  try { const s = localStorage.getItem('pearl-theme'); if (s === 'light' || s === 'dark') return s; } catch { /* private mode */ }
+  try { const s = localStorage.getItem('tavola-theme'); if (s === 'light' || s === 'dark') return s; } catch { /* private mode */ }
   return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
@@ -61,7 +61,7 @@ export const useStore = create<Store>((set, get) => ({
   page: 'concierge', setPage: p => set({ page: p }),
   bookingMode: 'auto',
   async loadMode() { try { const h = await api.health(); set({ bookingMode: h.bookingMode }); } catch { /* stay auto */ } },
-  toggleTheme: () => set(s => { const theme = s.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('pearl-theme', theme); } catch { /* ignore */ } document.documentElement.dataset.theme = theme; return { theme }; }),
+  toggleTheme: () => set(s => { const theme = s.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('tavola-theme', theme); } catch { /* ignore */ } document.documentElement.dataset.theme = theme; return { theme }; }),
 
   chat: { messages: [welcome], intent: {}, results: null, nearby: null, thinking: false, source: null },
   draft: '', setDraft: v => set({ draft: v }),

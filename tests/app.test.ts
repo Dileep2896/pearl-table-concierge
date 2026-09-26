@@ -27,7 +27,7 @@ function fakeBooker(script: { prepare?: PrepareResult; confirm?: BookingResult; 
   return booker as unknown as SevenRoomsBooker & { calls: string[] };
 }
 async function harness(booker: JobsOptions['booker'], jobsOptions: Partial<JobsOptions> = {}) {
-  const dir = await mkdtemp(join(tmpdir(), 'pearl-app-'));
+  const dir = await mkdtemp(join(tmpdir(), 'tavola-app-'));
   const ledger = new BookingLedger(join(dir, 'bookings.json'));
   const jobs = new BookingJobs({ booker, ledger, ...jobsOptions });
   const app = createApp({ useCodex: false, availability: new AvailabilityService(), jobs, ledger, profiles: new ProfileStore(join(dir, 'profile.json')) });
@@ -163,7 +163,7 @@ describe('exact-time picks', () => {
 describe('production serving and health', () => {
   it('falls back to index.html for a non-API GET but still 404s an unknown API route', async () => {
     const jobs = new BookingJobs({ booker: () => fakeBooker({}) });
-    const app = createApp({ useCodex: false, availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'pearl-web.json')), webDir: 'dist', indexHtml: '<!doctype html><title>Pearl</title>' });
+    const app = createApp({ useCodex: false, availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'tavola-web.json')), webDir: 'dist', indexHtml: '<!doctype html><title>Tavola</title>' });
     try {
       const page = await app.request('/reservations');
       expect(page.status).toBe(200); expect(await page.text()).toContain('<!doctype html>');
@@ -174,7 +174,7 @@ describe('production serving and health', () => {
   it('health reports the chat provider from a detached status callback (regression: bound this)', async () => {
     const status = new CodexQueue().status; // detached reference must keep `this`
     const jobs = new BookingJobs({ booker: () => fakeBooker({}) });
-    const app = createApp({ useCodex: true, modelSource: 'codex', availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'pearl-health.json')), health: () => ({ chat: status() }) });
+    const app = createApp({ useCodex: true, modelSource: 'codex', availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'tavola-health.json')), health: () => ({ chat: status() }) });
     try {
       const res = await app.request('/api/health');
       expect(res.status).toBe(200);

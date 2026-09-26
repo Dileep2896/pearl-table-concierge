@@ -121,7 +121,7 @@
 /* Intro (empty) state — one centered composition, the input is the hero */
 .intro-stage { flex: 1; min-height: 0; overflow-y: auto; display: grid; place-items: center; padding: clamp(24px, 6vh, 72px) 0 100px; }
 .intro-inner { width: min(680px, 100%); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 20px; }
-.pearl-mark { filter: drop-shadow(0 8px 30px color-mix(in oklab, var(--brass) 34%, transparent)); }
+.tavola-mark { filter: drop-shadow(0 8px 30px color-mix(in oklab, var(--brass) 34%, transparent)); }
 .intro-title { font-size: clamp(34px, 5vw, 54px); font-weight: 500; line-height: 1.06; letter-spacing: -.02em; margin: 4px 0 0; }
 .intro-sub { max-width: 54ch; color: var(--muted); font-size: 16px; line-height: 1.65; margin: 0 0 6px; }
 .intro-sub em { font-style: italic; color: var(--ink-soft); font-family: 'Fraunces', serif; }

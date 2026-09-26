@@ -13,7 +13,7 @@ export const bookingRequestSchema = z.object({ venue: z.string().regex(/^[a-z0-9
 export type BookingRequest = z.input<typeof bookingRequestSchema>;
 
 export type BookingStep = 'OPENING' | 'SELECTING_TIME' | 'HOLDING' | 'FILLING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED';
-/** `screenshot` is only set on FAILED: the restaurant's page at the moment Pearl stopped, as evidence for the diner. */
+/** `screenshot` is only set on FAILED: the restaurant's page at the moment Tavola stopped, as evidence for the diner. */
 export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; /** Set when the policy mentions a cancellation fee: the diner decides whether to go ahead. */ feeWarning?: string; /** Set when the checkout needs the diner to add a card or sign in: on a remote browser they finish it in the live view. */ needsDiner?: 'card' | 'login'; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
 /** What happened on the wire after Submit: enough to explain a rejection without re-running it. */
 export type SubmitDiagnostics = { finalUrl: string; requests: { method: string; url: string; status?: number; body?: string; failure?: string }[]; console: string[]; pageText: string };
@@ -59,11 +59,11 @@ export class SevenRoomsBooker {
     this.step('OPENING');
     const started = performance.now();
     const context = await this.contexts.context({ locale: 'en-US', timezoneId: input.timezone, viewport: { width: 430, height: 900 }, serviceWorkers: 'block' });
-    // Reuse the browser's existing tab so a remote live view is watching the page Pearl actually drives.
+    // Reuse the browser's existing tab so a remote live view is watching the page Tavola actually drives.
     const page = context.pages()[0] ?? await context.newPage(); page.setDefaultTimeout(15000);
     page.on('dialog', dialog => { void dialog.dismiss().catch(() => {}); });
     const session: Session = { context, page, policy: '' };
-    // Surface the remote live view immediately so the diner watches Pearl fill the form.
+    // Surface the remote live view immediately so the diner watches Tavola fill the form.
     if (this.options.remote && this.options.liveView && this.options.onLiveView) void this.options.liveView(context).then(u => this.options.onLiveView?.(u)).catch(() => {});
     page.on('response', (response: Response) => {
       const url = response.url();
@@ -89,7 +89,7 @@ export class SevenRoomsBooker {
       // A cancellation fee is a heads-up, not a wall: unless strict mode is set, prepare the table and let the diner decide at confirm.
       ({ text: session.policy, screenshot: session.policyShot } = await this.readPolicy(page));
       const hasFee = Boolean(session.policy) && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy);
-      if (hasFee && this.options.requireFreeCancellation === true) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee, so Pearl stopped before booking.');
+      if (hasFee && this.options.requireFreeCancellation === true) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee, so Tavola stopped before booking.');
       const feeWarning = hasFee ? session.policy : undefined;
       // A login replaces the guest form, so detect it before filling. A card is an extra field alongside the
       // guest form, so fill first — then a card-required venue only needs the card itself from the diner.
@@ -100,17 +100,17 @@ export class SevenRoomsBooker {
       const values = Object.fromEntries(await page.locator('input[name="firstName"], input[name="lastName"], input[name="emailAddress"], input[name="phoneNumber"]').evaluateAll(els => els.map(el => [(el as HTMLInputElement).name, (el as HTMLInputElement).value])));
       const holdSeconds = Number((session.holdResponse as { data?: { hold_duration_sec?: number } } | undefined)?.data?.hold_duration_sec) || 300;
       if (needsDiner) {
-        // On a remote browser (Browserbase) the diner finishes the card/login in the embedded live view and Pearl
-        // records the result. Locally there is no in-app browser, so Pearl stops and offers the SevenRooms handoff.
-        if (!(this.options.remote && this.options.liveView)) throw new BookingFailure(needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', needsDiner === 'card' ? 'This restaurant asks for a card at checkout. Pearl does not enter payment details.' : 'This restaurant requires a SevenRooms login. Pearl stopped.');
+        // On a remote browser (Browserbase) the diner finishes the card/login in the embedded live view and Tavola
+        // records the result. Locally there is no in-app browser, so Tavola stops and offers the SevenRooms handoff.
+        if (!(this.options.remote && this.options.liveView)) throw new BookingFailure(needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', needsDiner === 'card' ? 'This restaurant asks for a card at checkout. Tavola does not enter payment details.' : 'This restaurant requires a SevenRooms login. Tavola stopped.');
         session.needsDiner = needsDiner;
         this.session = session;
         void this.options.liveView(session.context).then(u => this.options.onLiveView?.(u)).catch(() => {});
         log('info', 'booking_prepared_needs_diner', { venue: input.venue, needsDiner, ms: Math.round(performance.now() - started), holdSeconds });
         this.step('READY', `needs ${needsDiner}`);
         const message = needsDiner === 'card'
-          ? 'This restaurant asks for a card at checkout. Pearl filled everything else — add your card in the live browser above and book there, then Pearl records the confirmation.'
-          : 'This restaurant needs a SevenRooms sign-in. Do it in the live browser above and book there — Pearl records the confirmation.';
+          ? 'This restaurant asks for a card at checkout. Tavola filled everything else — add your card in the live browser above and book there, then Tavola records the confirmation.'
+          : 'This restaurant needs a SevenRooms sign-in. Do it in the live browser above and book there — Tavola records the confirmation.';
         return { status: 'READY', code: 'READY', message, policy: session.policy, feeWarning, needsDiner, values, holdSeconds, pageUrl: page.url() };
       }
       const submit = page.locator('[data-test="checkout-button-complete"]');
@@ -123,7 +123,7 @@ export class SevenRoomsBooker {
     } catch (error) {
       const failure = error instanceof BookingFailure ? error : new BookingFailure('BROWSER_ERROR', `The booking browser hit an error: ${(error as Error)?.message?.split('\n')[0] ?? 'unknown'}`);
       const pageText = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')).replace(/\s+/g, ' ').slice(0, 800);
-      // Evidence: the policy dialog itself for a fee stop, otherwise the page as it looked when Pearl stopped.
+      // Evidence: the policy dialog itself for a fee stop, otherwise the page as it looked when Tavola stopped.
       const screenshot = failure.code === 'CANCELLATION_FEE' && session.policyShot ? session.policyShot : await page.screenshot({ type: 'png', fullPage: true, timeout: 8000 }).catch(() => undefined);
       this.step('FAILED', failure.code);
       log('info', 'booking_stopped', { venue: input.venue, code: failure.code, ms: Math.round(performance.now() - started) });
@@ -149,8 +149,8 @@ export class SevenRoomsBooker {
     const onConsole = (message: import('playwright').ConsoleMessage) => { if (['error', 'warning'].includes(message.type())) diagnostics.console.push(message.text().slice(0, 200)); };
     page.on('request', onRequest); page.on('response', onResponse); page.on('requestfailed', onFailed); page.on('console', onConsole);
     try {
-      // A card- or login-required venue: Pearl filled everything it can, and the diner completes the sensitive
-      // step in the live view (adds the card / signs in, then books). Pearl never presses Submit here — it
+      // A card- or login-required venue: Tavola filled everything it can, and the diner completes the sensitive
+      // step in the live view (adds the card / signs in, then books). Tavola never presses Submit here — it
       // watches the same session for the widget's confirmation and records it.
       if (session.needsDiner) {
         const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
@@ -161,7 +161,7 @@ export class SevenRoomsBooker {
         const outcome = await this.awaitOutcome(page, session, budget);
         const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
         diagnostics.finalUrl = page.url(); diagnostics.pageText = pageText.slice(0, 1500);
-        if (outcome !== 'confirmed') throw new BookingFailure(session.needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', session.needsDiner === 'card' ? 'Pearl did not see a confirmation after the card step. Nothing was booked. Finish on SevenRooms if the browser above did not complete it.' : 'Pearl did not see a confirmation after the sign-in step. Nothing was booked. Finish on SevenRooms if needed.');
+        if (outcome !== 'confirmed') throw new BookingFailure(session.needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', session.needsDiner === 'card' ? 'Tavola did not see a confirmation after the card step. Nothing was booked. Finish on SevenRooms if the browser above did not complete it.' : 'Tavola did not see a confirmation after the sign-in step. Nothing was booked. Finish on SevenRooms if needed.');
         const dinerRef = extractReference(session.bookResponse, pageText) ?? (/is_success=true/.test(page.url()) ? 'confirmed' : undefined);
         this.step('CONFIRMED', dinerRef);
         return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${dinerRef ? ` (${dinerRef})` : ''}. A confirmation email is on its way.`, reference: dinerRef, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), response: session.bookResponse ?? session.holdResponse, diagnostics };
@@ -172,7 +172,7 @@ export class SevenRoomsBooker {
       await submit.click();
       let outcome = await this.awaitOutcome(page, session, 40000);
       // reCAPTCHA Enterprise rejects automated browsers on the first try and then shows a checkbox. In a
-      // visible window a person can tick it; Pearl watches for the solved token and presses Submit again.
+      // visible window a person can tick it; Tavola watches for the solved token and presses Submit again.
       if (outcome === 'error' && this.options.humanSolveMs && diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line))) {
         await page.waitForTimeout(1500);
         // Remote browser (Browserbase): the solve arrives in the background — wait for the token and resubmit.
@@ -198,7 +198,7 @@ export class SevenRoomsBooker {
       const serverSaid = (() => { const r = session.bookResponse as { msg?: string; message?: string; errors?: unknown; raw?: string } | undefined; return r?.msg || r?.message || (r?.errors ? JSON.stringify(r.errors).slice(0, 200) : '') || r?.raw || ''; })();
       const captchaRejected = diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line));
       if (outcome === 'captcha') throw Object.assign(new BookingFailure('CAPTCHA_UNSOLVED', 'SevenRooms asked for a human verification and nobody completed it in time. Nothing was booked. Pick the time again and tick the checkbox in the browser window when it appears.'), { pageText, screenshot });
-      if (outcome === 'error') throw Object.assign(new BookingFailure(captchaRejected ? 'CAPTCHA_REJECTED' : 'WIDGET_REJECTED', captchaRejected ? `SevenRooms' reCAPTCHA rejected this automated browser (HTTP ${session.bookStatus}). Nothing was booked.${this.options.humanSolveMs ? '' : ' Run the API without PEARL_HEADLESS so a person can pass the checkbox in the browser window.'}` : `SevenRooms did not accept the booking (HTTP ${session.bookStatus ?? '?'}${serverSaid ? `: ${serverSaid}` : ''}). Nothing was booked.`), { pageText, screenshot });
+      if (outcome === 'error') throw Object.assign(new BookingFailure(captchaRejected ? 'CAPTCHA_REJECTED' : 'WIDGET_REJECTED', captchaRejected ? `SevenRooms' reCAPTCHA rejected this automated browser (HTTP ${session.bookStatus}). Nothing was booked.${this.options.humanSolveMs ? '' : ' Run the API without TAVOLA_HEADLESS so a person can pass the checkbox in the browser window.'}` : `SevenRooms did not accept the booking (HTTP ${session.bookStatus ?? '?'}${serverSaid ? `: ${serverSaid}` : ''}). Nothing was booked.`), { pageText, screenshot });
       if (outcome === 'timeout') throw Object.assign(new BookingFailure('NO_CONFIRMATION', 'No confirmation appeared within 40 seconds. Check your email before retrying.'), { pageText, screenshot });
       const reference = extractReference(session.bookResponse, pageText) ?? (/is_success=true/.test(page.url()) ? 'confirmed' : undefined);
       this.step('CONFIRMED', reference);

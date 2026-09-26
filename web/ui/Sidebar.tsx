@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { useStore, type Page } from '../store/store';
 import { Icon } from './Icon';
-import { Pearl } from './Pearl';
+import { Tavola } from './Tavola';
 import { ThemeToggle } from './ThemeToggle';
 
 const items: { id: Page; label: string; icon: Parameters<typeof Icon>[0]['name'] }[] = [
@@ -15,7 +15,7 @@ export function Sidebar() {
   const count = useStore(s => s.bookings.length);
   const profile = useStore(s => s.profile);
   return <aside className="sidebar">
-    <button className="side-brand" onClick={() => setPage('concierge')}><Pearl size={30} /><div><span className="brand-name">Pearl</span><span className="brand-sub">Table concierge</span></div></button>
+    <button className="side-brand" onClick={() => setPage('concierge')}><Tavola size={30} /><div><span className="brand-name">Tavola</span><span className="brand-sub">Table concierge</span></div></button>
     <nav className="side-nav">
       {items.map(it => <button key={it.id} className={`nav-item ${page === it.id ? 'on' : ''}`} onClick={() => setPage(it.id)}>
         {page === it.id && <motion.span layoutId="nav-active" className="nav-active" transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
