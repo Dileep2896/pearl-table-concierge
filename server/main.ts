@@ -19,7 +19,7 @@ const jobs = new BookingJobs({
   ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs, humanSolveMs: config.headless ? undefined : config.humanSolveMs,
 });
 const app = createApp({
-  useCodex: config.useCodex, codex: codex.run,
+  useCodex: config.useCodex, bookingMode: config.bookingMode, codex: codex.run,
   availability: new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs }),
   jobs, ledger, profiles: new ProfileStore(config.profilePath),
   health: () => ({ browser: pool.status(), codexQueue: codex.status() }),

@@ -103,14 +103,14 @@ describe('SevenRoomsBooker', () => {
     const result = await booker.book(request);
     expect(result.status).toBe('FAILED'); expect(result.code).toBe('PAYMENT_REQUIRED'); expect(record.posts.map(p => p.url)).toEqual(['/api-yoa/dining/hold/add']);
   });
-  it('refuses venues whose cancellation policy charges a fee unless told otherwise', async () => {
+  it('warns about a cancellation fee by default and refuses only in strict mode', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
     const feePage = checkoutPage.replace('Please cancel at least 2 hours ahead so we can offer the table to another guest.', 'No shows or late cancellations are subject to a fee of $55 per person applied to the credit card on file.');
-    const strict = await new SevenRoomsBooker({ contexts: pool(record, { checkout: feePage }) }).book(request);
-    expect(strict.status).toBe('FAILED'); expect(strict.code).toBe('CANCELLATION_FEE'); expect(strict.policy).toMatch(/\$55/); expect(strict.screenshot?.byteLength).toBeGreaterThan(100);
+    const prepared = await new SevenRoomsBooker({ contexts: pool(record, { checkout: feePage }) }).prepare(request);
+    expect(prepared.status).toBe('READY'); expect(prepared.feeWarning).toMatch(/\$55/);
+    const strict = await new SevenRoomsBooker({ contexts: pool(record, { checkout: feePage }), requireFreeCancellation: true }).book(request);
+    expect(strict.status).toBe('FAILED'); expect(strict.code).toBe('CANCELLATION_FEE');
     expect(record.posts.some(p => p.url.endsWith('/book'))).toBe(false);
-    const relaxed = await new SevenRoomsBooker({ contexts: pool(record, { checkout: feePage }), requireFreeCancellation: false }).book(request);
-    expect(relaxed.status).toBe('CONFIRMED');
   });
   it('rejects bad contact details before opening a browser', async () => {
     const booker = new SevenRoomsBooker({ contexts: { context: async () => { throw new Error('should not open a context'); } } });

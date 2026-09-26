@@ -187,6 +187,10 @@
 .notice { border-radius: var(--r-sm); padding: 9px 12px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
 .notice.ok { background: color-mix(in oklab, var(--ok) 16%, transparent); color: var(--ok); }
 .notice.bad { background: color-mix(in oklab, var(--bad) 16%, transparent); color: var(--bad); }
+.notice.warn { background: color-mix(in oklab, var(--brass) 14%, transparent); color: var(--ink); border: 1px solid color-mix(in oklab, var(--brass) 40%, transparent); align-items: flex-start; line-height: 1.45; }
+.notice.warn svg { color: var(--brass-bright); flex-shrink: 0; margin-top: 2px; }
+.handoff-steps { margin: 4px 0 10px; padding-left: 20px; color: var(--ink-soft); font-size: 14.5px; line-height: 1.6; }
+.finish-hint { margin: 8px 0 0; }
 
 /* Bookings */
 .bookings { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 16px; font-size: 14px; }

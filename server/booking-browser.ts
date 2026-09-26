@@ -14,7 +14,7 @@ export type BookingRequest = z.input<typeof bookingRequestSchema>;
 
 export type BookingStep = 'OPENING' | 'SELECTING_TIME' | 'HOLDING' | 'FILLING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED';
 /** `screenshot` is only set on FAILED: the restaurant's page at the moment Pearl stopped, as evidence for the diner. */
-export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
+export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; /** Set when the policy mentions a cancellation fee: the diner decides whether to go ahead. */ feeWarning?: string; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
 /** What happened on the wire after Submit: enough to explain a rejection without re-running it. */
 export type SubmitDiagnostics = { finalUrl: string; requests: { method: string; url: string; status?: number; body?: string; failure?: string }[]; console: string[]; pageText: string };
 export type BookingResult = { status: 'CONFIRMED' | 'FAILED'; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; pageText?: string; screenshot?: Buffer; response?: unknown; diagnostics?: SubmitDiagnostics };
@@ -86,7 +86,10 @@ export class SevenRoomsBooker {
       if (await this.asksForCard(page)) throw new BookingFailure('PAYMENT_REQUIRED', 'This restaurant asks for a card at checkout. Pearl does not enter payment details.');
       if (await page.locator('input[type="password"]').filter({ visible: true }).count() > 0) throw new BookingFailure('LOGIN_REQUIRED', 'This restaurant requires a SevenRooms login. Pearl stopped.');
       ({ text: session.policy, screenshot: session.policyShot } = await this.readPolicy(page));
-      if (this.options.requireFreeCancellation !== false && session.policy && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy)) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee to a card on file, so Pearl stopped before booking.');
+      const hasFee = Boolean(session.policy) && /\$\s?\d|\bfee\b|\bcharged?\b|\bdeposit\b|card on file/i.test(session.policy);
+      // A cancellation fee is a heads-up, not a wall: unless strict mode is set, prepare the table and let the diner decide at confirm.
+      if (hasFee && this.options.requireFreeCancellation === true) throw new BookingFailure('CANCELLATION_FEE', 'This restaurant charges a cancellation fee, so Pearl stopped before booking.');
+      const feeWarning = hasFee ? session.policy : undefined;
       this.step('FILLING');
       await page.locator('input[name="firstName"]').fill(input.contact.firstName);
       await page.locator('input[name="lastName"]').fill(input.contact.lastName);
@@ -103,7 +106,7 @@ export class SevenRoomsBooker {
       this.session = session;
       log('info', 'booking_prepared', { venue: input.venue, ms: Math.round(performance.now() - started), holdSeconds });
       this.step('READY', `held ${holdSeconds}s`);
-      return { status: 'READY', code: 'READY', message: 'The form is filled and the table is held. Confirm to submit.', policy: session.policy, values, holdSeconds, pageUrl: page.url() };
+      return { status: 'READY', code: 'READY', message: 'The form is filled and the table is held. Confirm to submit.', policy: session.policy, feeWarning, values, holdSeconds, pageUrl: page.url() };
     } catch (error) {
       const failure = error instanceof BookingFailure ? error : new BookingFailure('BROWSER_ERROR', `The booking browser hit an error: ${(error as Error)?.message?.split('\n')[0] ?? 'unknown'}`);
       const pageText = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')).replace(/\s+/g, ' ').slice(0, 800);

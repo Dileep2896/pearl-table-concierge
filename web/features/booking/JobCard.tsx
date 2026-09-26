@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useStore } from '../../store/store';
-import { dayLabel, timeLabel } from '../../lib/format';
+import { dayLabel, timeLabel, sevenRoomsUrl } from '../../lib/format';
 import { panelPop, overlayFade } from '../../lib/motion';
 import { Button } from '../../ui/Button';
 import { Icon } from '../../ui/Icon';
@@ -11,6 +11,8 @@ import { Verification } from './Verification';
 
 const titles: Record<string, string> = { PREPARING: 'Preparing your table', READY: 'Ready to reserve', SUBMITTING: 'Placing your reservation', CONFIRMED: 'Table reserved', EXPIRED: 'The hold expired', FAILED: 'Reservation stopped', CANCELLED: 'Cancelled' };
 const retryable = ['CAPTCHA_UNSOLVED', 'HOLD_EXPIRED', 'SLOT_GONE', 'NO_CONFIRMATION', 'TIMEOUT', 'API_UNREACHABLE'];
+// Stops the server browser can't get past — offer the diner the device-side finish instead.
+const handoffable = ['PAYMENT_REQUIRED', 'LOGIN_REQUIRED', 'CAPTCHA_REJECTED', 'CAPTCHA_UNSOLVED', 'WIDGET_REJECTED', 'NO_CONFIRMATION'];
 function useNow(active: boolean) { const [, set] = useState(0); useEffect(() => { if (!active) return; const t = setInterval(() => set(n => n + 1), 1000); return () => clearInterval(t); }, [active]); }
 
 export function JobCard() {
@@ -41,9 +43,9 @@ export function JobCard() {
 
       {job.state === 'READY' && job.prepared && <div className="ready">
         <p className="who">Filling in as <strong>{job.prepared.values?.firstName ?? job.request.contact.firstName} {job.prepared.values?.lastName ?? job.request.contact.lastName}</strong> · {job.prepared.values?.emailAddress ?? job.request.contact.email}</p>
-        {job.prepared.policy && <p className="muted policy">“{job.prepared.policy}”</p>}
-        <p className="muted quiet">The table is held for you. Nothing is placed until you confirm.</p>
-        <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Release</Button><Button onClick={() => void confirm()}><Icon name="check" size={16} /> Confirm reservation</Button></div>
+        {job.prepared.feeWarning ? <div className="notice warn"><Icon name="warn" size={16} /><span><strong>Cancellation fee.</strong> {job.prepared.feeWarning}</span></div> : job.prepared.policy && <p className="muted policy">“{job.prepared.policy}”</p>}
+        <p className="muted quiet">The table is held for you. Nothing is placed until you confirm.{job.prepared.feeWarning ? ' By confirming you accept the restaurant’s fee policy.' : ''}</p>
+        <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Release</Button><Button onClick={() => void confirm()}><Icon name="check" size={16} /> {job.prepared.feeWarning ? 'Accept & confirm' : 'Confirm reservation'}</Button></div>
       </div>}
 
       {job.result && job.state !== 'READY' && <p className={`job-message ${job.state === 'CONFIRMED' ? 'ok' : job.state === 'FAILED' || job.state === 'EXPIRED' ? 'bad' : ''}`}>{job.result.message}</p>}
@@ -52,7 +54,12 @@ export function JobCard() {
       {job.state === 'FAILED' && job.result?.hasEvidence && <figure className="evidence"><img src={`/api/book/${job.id}/evidence.png`} alt="The restaurant’s page when Pearl stopped" /><figcaption className="muted quiet">What the restaurant’s page showed.{job.result.pageUrl && <> <a href={job.result.pageUrl} target="_blank" rel="noreferrer">Open it</a></>}</figcaption></figure>}
 
       {job.state === 'PREPARING' && <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Cancel</Button></div>}
-      {!['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) && <div className="row-end">{retryable.includes(job.result?.code ?? '') && <Button onClick={retry}>Try this time again</Button>}<Button variant="ghost" onClick={dismiss}>{job.state === 'CONFIRMED' ? 'Done' : 'Back to tables'}</Button></div>}
+      {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <p className="muted quiet finish-hint">Pearl can’t finish this one for you. You can complete it yourself on the restaurant’s page.</p>}
+      {!['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) && <div className="row-end">
+        {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <Button onClick={() => window.open(sevenRoomsUrl(job.request.venue.slug, job.request.date, job.request.partySize, job.request.time), '_blank', 'noopener')}>Finish on SevenRooms</Button>}
+        {retryable.includes(job.result?.code ?? '') && <Button variant="ghost" onClick={retry}>Try again</Button>}
+        <Button variant="ghost" onClick={dismiss}>{job.state === 'CONFIRMED' ? 'Done' : 'Back to tables'}</Button>
+      </div>}
     </motion.section></div>
   </>}</AnimatePresence>;
 }

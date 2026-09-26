@@ -6,14 +6,15 @@ import { ConciergePage } from './features/chat/ConciergePage';
 import { ReservationsPage } from './features/bookings/ReservationsPage';
 import { SettingsPage } from './features/profile/SettingsPage';
 import { JobCard } from './features/booking/JobCard';
+import { HandoffCard } from './features/booking/HandoffCard';
 import { fadeSwap } from './lib/motion';
 
 export function App() {
   const theme = useStore(s => s.theme); const page = useStore(s => s.page);
-  const loadProfile = useStore(s => s.loadProfile); const loadBookings = useStore(s => s.loadBookings); const loadAreas = useStore(s => s.loadAreas);
+  const loadProfile = useStore(s => s.loadProfile); const loadBookings = useStore(s => s.loadBookings); const loadAreas = useStore(s => s.loadAreas); const loadMode = useStore(s => s.loadMode);
   const error = useStore(s => s.error);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  useEffect(() => { void loadProfile(); void loadBookings(); void loadAreas(); }, [loadProfile, loadBookings, loadAreas]);
+  useEffect(() => { void loadProfile(); void loadBookings(); void loadAreas(); void loadMode(); }, [loadProfile, loadBookings, loadAreas, loadMode]);
 
   return <div className="shell">
     <Sidebar />
@@ -28,5 +29,6 @@ export function App() {
     </main>
     <AnimatePresence>{error && <motion.div className="toast bad" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} onClick={() => useStore.getState().setError(null)}>{error}</motion.div>}</AnimatePresence>
     <JobCard />
+    <HandoffCard />
   </div>;
 }

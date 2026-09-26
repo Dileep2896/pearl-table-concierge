@@ -11,7 +11,7 @@ export type JobResult = { status: string; code: string; message: string; referen
 export type BookingJob = {
   id: string; state: JobState; createdAt?: string; updatedAt?: string; steps: BookingStep[];
   request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact };
-  prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string };
+  prepared?: { policy?: string; feeWarning?: string; values?: Record<string, string>; holdExpiresAt: string };
   verification?: { requestedAt: string; expiresAt: string; passedAt?: string };
   result?: JobResult;
 };
@@ -34,5 +34,7 @@ export const api = {
   cancel: (id: string) => fetch(`/api/book/${id}`, { method: 'DELETE' }).then(r => json<{ job: BookingJob }>(r)),
   job: (id: string) => fetch(`/api/book/${id}`).then(r => json<{ job: BookingJob }>(r)),
   bookings: () => fetch('/api/bookings').then(r => json<{ bookings: LedgerEntry[] }>(r)),
+  addBooking: (body: { venue: string; date: string; time: string; partySize: number; reference?: string }) => post('/api/bookings', body).then(r => json<{ booking: LedgerEntry }>(r)),
+  health: () => fetch('/api/health').then(r => json<{ ok: boolean; bookingMode: 'auto' | 'handoff'; codex: boolean }>(r)),
   venues: () => fetch('/api/venues').then(r => json<{ venues: Venue[] }>(r)),
 };

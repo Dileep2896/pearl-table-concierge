@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api, ApiError, type BookingJob, type Contact, type Intent, type Message, type VenueAvailability, type Slot, type Venue, type LedgerEntry } from '../lib/api';
-import { emptyContact, profileComplete } from '../lib/format';
+import { emptyContact, profileComplete, sevenRoomsUrl } from '../lib/format';
 
 type Theme = 'dark' | 'light';
 export type Page = 'concierge' | 'reservations' | 'settings';
@@ -11,6 +11,8 @@ const welcome: Message = { id: 'welcome', role: 'assistant', text: 'Good evening
 export type Store = {
   theme: Theme; toggleTheme: () => void;
   page: Page; setPage: (p: Page) => void;
+  bookingMode: 'auto' | 'handoff';
+  loadMode: () => Promise<void>;
   chat: Chat;
   draft: string; setDraft: (v: string) => void;
   error: string | null; setError: (v: string | null) => void;
@@ -24,6 +26,12 @@ export type Store = {
   selection: { venue: Venue; slot: Slot } | null;
   select: (venue: Venue, slot: Slot) => void;
   clearSelection: () => void;
+
+  /** Handoff mode: the diner finishes on SevenRooms; we ask whether it worked. */
+  handoff: { venue: Venue; slot: Slot; opened: boolean } | null;
+  openHandoff: (venue: Venue, slot: Slot) => void;
+  confirmHandoff: (reference?: string) => Promise<void>;
+  dismissHandoff: () => void;
 
   job: BookingJob | null;
   poll: { timer?: ReturnType<typeof setTimeout>; misses: number };
@@ -51,6 +59,8 @@ function initialTheme(): Theme {
 export const useStore = create<Store>((set, get) => ({
   theme: initialTheme(),
   page: 'concierge', setPage: p => set({ page: p }),
+  bookingMode: 'auto',
+  async loadMode() { try { const h = await api.health(); set({ bookingMode: h.bookingMode }); } catch { /* stay auto */ } },
   toggleTheme: () => set(s => { const theme = s.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('pearl-theme', theme); } catch { /* ignore */ } document.documentElement.dataset.theme = theme; return { theme }; }),
 
   chat: { messages: [welcome], intent: {}, results: null, nearby: null, thinking: false, source: null },
@@ -80,8 +90,27 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   selection: null,
-  select(venue, slot) { set({ selection: { venue, slot }, error: null }); if (get().profile.complete) void get().prepare(venue, slot); },
+  select(venue, slot) {
+    set({ error: null });
+    if (get().bookingMode === 'handoff') { get().openHandoff(venue, slot); return; }
+    set({ selection: { venue, slot } });
+    if (get().profile.complete) void get().prepare(venue, slot);
+  },
   clearSelection() { set({ selection: null }); },
+
+  handoff: null,
+  openHandoff(venue, slot) {
+    const { intent } = get().chat;
+    const url = sevenRoomsUrl(venue.slug, intent.date!, intent.partySize!, slot.time);
+    try { window.open(url, '_blank', 'noopener'); } catch { /* popup blocked; the panel has a link */ }
+    set({ handoff: { venue, slot, opened: true }, selection: null });
+  },
+  async confirmHandoff(reference) {
+    const h = get().handoff; if (!h) return; const { intent } = get().chat;
+    try { await api.addBooking({ venue: h.venue.slug, date: intent.date!, time: h.slot.time, partySize: intent.partySize!, reference }); await get().loadBookings(); } catch { /* ignore */ }
+    set(s => ({ handoff: null, chat: { ...s.chat, messages: [...s.chat.messages, { id: `h-${Date.now()}`, role: 'assistant', text: `Saved: ${h.venue.name} at ${h.slot.label}. Enjoy your evening.` }] } }));
+  },
+  dismissHandoff() { set({ handoff: null }); },
 
   job: null,
   poll: { misses: 0 },

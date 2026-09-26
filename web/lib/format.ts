@@ -5,3 +5,5 @@ export const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.max(0, 
 import type { Contact } from './api';
 export const emptyContact: Contact = { firstName: '', lastName: '', email: '', phone: '' };
 export const profileComplete = (p: Contact) => Boolean(p.firstName && p.lastName && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email) && p.phone.replace(/\D/g, '').length >= 10);
+
+export const sevenRoomsUrl = (slug: string, date: string, partySize: number, time: string) => `https://www.sevenrooms.com/explore/${slug}/reservations/create/search?date=${date}&party_size=${partySize}&time=${encodeURIComponent(time)}`;

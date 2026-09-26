@@ -24,6 +24,8 @@ export type Config = {
   browserChannel?: string;
   humanSolveMs: number;
   browserOffscreen: boolean;
+  /** 'auto' drives a server browser (local); 'handoff' opens SevenRooms in the diner's own browser (deployable). */
+  bookingMode: 'auto' | 'handoff';
 };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,12 +49,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     availabilityTimeoutMs: num(env.PEARL_AVAILABILITY_TIMEOUT_MS, 15_000),
     codexTimeoutMs: num(env.PEARL_CODEX_TIMEOUT_MS, 60_000),
     codexCacheMs: num(env.PEARL_CODEX_CACHE_MS, 5 * 60_000),
-    requireFreeCancellation: env.PEARL_ALLOW_FEE_VENUES !== '1',
+    // Fees are shown to the diner to decide by default; strict mode refuses fee venues outright.
+    requireFreeCancellation: env.PEARL_STRICT_NO_FEE === '1',
     // Visible by default: SevenRooms' reCAPTCHA needs a person to tick a checkbox, which only works in a window you can see.
     headless: env.PEARL_HEADLESS === '1',
     browserChannel: env.PEARL_BROWSER_CHANNEL || undefined,
     humanSolveMs: num(env.PEARL_HUMAN_SOLVE_MS, 120_000),
     // The booking window stays off-screen while Pearl fills the form; it only comes into view if a reCAPTCHA checkbox appears.
     browserOffscreen: !env.PEARL_BROWSER_VISIBLE && env.PEARL_HEADLESS !== '1',
+    bookingMode: env.PEARL_BOOKING_MODE === 'handoff' ? 'handoff' : 'auto',
   };
 }

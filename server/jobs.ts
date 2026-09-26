@@ -12,7 +12,7 @@ export type BookingJob = {
   steps: { step: BookingStep; note?: string; at: string }[];
   request: { venue: Venue; date: string; time: string; partySize: number; contact: BookingRequest['contact'] };
   /** Present once the form is filled: what Pearl typed and what the restaurant's policy says. */
-  prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string };
+  prepared?: { policy?: string; feeWarning?: string; values?: Record<string, string>; holdExpiresAt: string };
   /** Set while the restaurant's page is waiting for the diner to tick the reCAPTCHA checkbox. */
   verification?: { requestedAt: string; expiresAt: string; passedAt?: string };
   result?: JobResult;
@@ -96,7 +96,7 @@ export class BookingJobs {
       if (job.state !== 'PREPARING') return;
       if (prepared.status !== 'READY') { const noShot = ['CANCELLATION_FEE', 'PAYMENT_REQUIRED'].includes(prepared.code); void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }, noShot ? undefined : prepared.screenshot); return; }
       const holdMs = Math.max(this.options.minHoldMs ?? 30_000, (prepared.holdSeconds ?? 300) * 1000 - (this.options.holdMarginMs ?? 20_000));
-      job.prepared = { policy: prepared.policy, values: prepared.values, holdExpiresAt: new Date(this.now().getTime() + holdMs).toISOString() };
+      job.prepared = { policy: prepared.policy, feeWarning: prepared.feeWarning, values: prepared.values, holdExpiresAt: new Date(this.now().getTime() + holdMs).toISOString() };
       for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
       this.move(entry, 'READY');
       const expiry = setTimeout(() => { void this.finish(entry, 'EXPIRED', { status: 'EXPIRED', code: 'HOLD_EXPIRED', message: 'The restaurant’s 5-minute hold lapsed before you confirmed. Pick the time again.' }); }, holdMs);

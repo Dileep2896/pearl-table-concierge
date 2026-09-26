@@ -30,7 +30,8 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `PEARL_AVAILABILITY_CACHE_MS` | 20000 | How long a venue lookup is reused |
 | `PEARL_AVAILABILITY_CONCURRENCY` | 6 | Parallel SevenRooms requests |
 | `PEARL_JOB_RETENTION_MS` | 1800000 | How long finished bookings stay readable |
-| `PEARL_ALLOW_FEE_VENUES` | unset | `1` disables the no-fee guard |
+| `PEARL_STRICT_NO_FEE` | unset | `1` refuses fee venues outright. By default a fee is shown to the diner to accept or decline at confirm |
+| `PEARL_BOOKING_MODE` | auto | `handoff` opens SevenRooms in the diner's own browser instead of driving a server browser — the deployable mode |
 | `PEARL_HEADLESS` | unset | `1` hides the booking browser. A hidden browser cannot pass SevenRooms' reCAPTCHA, so leave it off for real bookings |
 | `PEARL_BROWSER_VISIBLE` | unset | By default the booking window launches off-screen and only appears if a reCAPTCHA checkbox is needed. `1` keeps it on-screen throughout |
 | `PEARL_BROWSER_CHANNEL` | unset | `chrome` uses the installed Google Chrome instead of Playwright's Chromium |
