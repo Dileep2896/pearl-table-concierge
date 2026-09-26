@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { SevenRoomsBooker, type BookingRequest, type BookingStep } from './booking-browser';
+import { SevenRoomsBooker, type BookingRequest, type BookingStep, type SubmitDiagnostics } from './booking-browser';
 import type { Venue } from './venues';
 import type { BookingLedger } from './ledger';
 import { ApiError } from './errors';
 import { log } from './logger';
 
 export type JobState = 'PREPARING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
-export type JobResult = { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean };
+export type JobResult = { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean; diagnostics?: SubmitDiagnostics };
 export type BookingJob = {
   id: string; state: JobState; createdAt: string; updatedAt: string;
   steps: { step: BookingStep; note?: string; at: string }[];
@@ -104,7 +104,7 @@ export class BookingJobs {
     for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
     this.move(entry, 'SUBMITTING');
     void entry.booker.confirm().then(result => {
-      void this.finish(entry, result.status === 'CONFIRMED' ? 'CONFIRMED' : 'FAILED', { status: result.status, code: result.code, message: result.message, reference: result.reference, policy: result.policy, pageUrl: result.pageUrl }, result.status === 'CONFIRMED' ? undefined : result.screenshot);
+      void this.finish(entry, result.status === 'CONFIRMED' ? 'CONFIRMED' : 'FAILED', { status: result.status, code: result.code, message: result.message, reference: result.reference, policy: result.policy, pageUrl: result.pageUrl, diagnostics: result.diagnostics }, result.status === 'CONFIRMED' ? undefined : result.screenshot);
     }).catch(error => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'UNEXPECTED', message: error instanceof Error ? error.message : 'Confirmation failed.' }); });
     return job;
   }

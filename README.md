@@ -27,7 +27,9 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `PEARL_AVAILABILITY_CONCURRENCY` | 6 | Parallel SevenRooms requests |
 | `PEARL_JOB_RETENTION_MS` | 1800000 | How long finished bookings stay readable |
 | `PEARL_ALLOW_FEE_VENUES` | unset | `1` disables the no-fee guard |
-| `PEARL_HEADED` | unset | `1` shows the booking browser |
+| `PEARL_HEADLESS` | unset | `1` hides the booking browser. Hidden browsers cannot pass SevenRooms' reCAPTCHA, so leave it visible for real bookings |
+| `PEARL_BROWSER_CHANNEL` | unset | `chrome` uses the installed Google Chrome instead of Playwright's Chromium |
+| `PEARL_HUMAN_SOLVE_MS` | 120000 | How long Pearl waits for you to tick the reCAPTCHA checkbox |
 | `PEARL_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
 `GET /api/health` reports the browser pool, the Codex queue and job counts. `GET /api/bookings` lists confirmed reservations from the local ledger.
@@ -54,7 +56,7 @@ The confirm step auto-fills from a local profile stored at `.local/profile.json`
 
 1. Pick a time. Pearl opens the restaurant's SevenRooms page in a headless browser, selects that time (the widget holds the table for 5 minutes), reads the restaurant's policy, and fills the guest form from your profile. Nothing is submitted.
 2. The panel shows what was filled, the policy, and a countdown on the hold, with **Confirm booking** and **Cancel**.
-3. Only Confirm presses the restaurant's Submit button, once. Cancel closes the browser and releases the hold. Picking another time replaces the pending one. If the hold runs out, the panel says so and you pick again.
+3. Only Confirm presses the restaurant's Submit button. SevenRooms runs reCAPTCHA Enterprise on the checkout and rejects the first submit from any automated browser, then shows an "I'm not a robot" checkbox. Pearl keeps the browser window visible, tells you in the panel, waits for you to tick the box, and presses Submit again itself. Cancel closes the browser and releases the hold. Picking another time replaces the pending one. If the hold runs out, the panel says so and you pick again.
 
 If the panel says it lost contact with the demo API, the API process has stopped. `npm run demo` starts both processes and stops both if either one dies.
 

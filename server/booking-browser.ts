@@ -15,7 +15,9 @@ export type BookingRequest = z.input<typeof bookingRequestSchema>;
 export type BookingStep = 'OPENING' | 'SELECTING_TIME' | 'HOLDING' | 'FILLING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED';
 /** `screenshot` is only set on FAILED: the restaurant's page at the moment Pearl stopped, as evidence for the diner. */
 export type PrepareResult = { status: 'READY' | 'FAILED'; code: string; message: string; policy?: string; values?: Record<string, string>; holdSeconds?: number; pageUrl?: string; pageText?: string; screenshot?: Buffer };
-export type BookingResult = { status: 'CONFIRMED' | 'FAILED'; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; pageText?: string; screenshot?: Buffer; response?: unknown };
+/** What happened on the wire after Submit: enough to explain a rejection without re-running it. */
+export type SubmitDiagnostics = { finalUrl: string; requests: { method: string; url: string; status?: number; body?: string; failure?: string }[]; console: string[]; pageText: string };
+export type BookingResult = { status: 'CONFIRMED' | 'FAILED'; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; pageText?: string; screenshot?: Buffer; response?: unknown; diagnostics?: SubmitDiagnostics };
 
 export class BookingFailure extends Error { constructor(public code: string, message: string) { super(message); this.name = 'BookingFailure'; } }
 
@@ -35,7 +37,7 @@ export function extractReference(source: unknown, pageText = ''): string | undef
   return text?.[1];
 }
 
-type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; holdResponse?: unknown; policy: string; policyShot?: Buffer };
+type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bookStatus?: number; holdResponse?: unknown; policy: string; policyShot?: Buffer };
 
 /**
  * Drives the public SevenRooms guest widget exactly as a diner would, in two phases.
@@ -45,7 +47,7 @@ type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; ho
  */
 export class SevenRoomsBooker {
   private session?: Session;
-  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean } = {}) {}
+  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number } = {}) {}
   private get contexts(): ContextSource { return this.options.contexts ?? (this.options.contexts = new BrowserPool()); }
   private step(step: BookingStep, note?: string) { this.options.onStep?.(step, note); }
   get ready() { return Boolean(this.session); }
@@ -62,9 +64,10 @@ export class SevenRoomsBooker {
     const session: Session = { context, page, policy: '' };
     page.on('response', (response: Response) => {
       const url = response.url();
-      if (!url.includes('/api-yoa/')) return;
+      if (!/sevenrooms\.com/.test(url)) return;
       if (/\/hold\/add\b/.test(url)) void response.json().then(json => { session.holdResponse = json; }).catch(() => {});
-      if (/\/book(?:\?|$)/.test(url) && response.request().method() === 'POST') void response.json().then(json => { session.bookResponse = json; }).catch(() => {});
+      // The booking call lives under /booking/dining/widget/<id>/book, not /api-yoa.
+      if (/\/book(?:\?|$)/.test(url) && response.request().method() === 'POST') { session.bookStatus = response.status(); void response.text().then(text => { try { session.bookResponse = JSON.parse(text); } catch { session.bookResponse = { raw: text.slice(0, 300) }; } }).catch(() => { session.bookResponse = {}; }); }
     });
     try {
       await page.goto(searchPageUrl(input.venue, input.date, input.partySize, input.time, base), { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -118,25 +121,53 @@ export class SevenRoomsBooker {
     const session = this.session;
     if (!session) return { status: 'FAILED', code: 'NOT_PREPARED', message: 'Nothing is prepared to confirm. Pick a time again.' };
     const { page } = session;
+    // Record what the widget does after Submit, so a rejection can be explained from the job alone.
+    const diagnostics: SubmitDiagnostics = { finalUrl: '', requests: [], console: [], pageText: '' };
+    const onRequest = (request: import('playwright').Request) => { if (request.method() !== 'GET' && /sevenrooms|recaptcha/.test(request.url())) diagnostics.requests.push({ method: request.method(), url: request.url().slice(0, 160) }); };
+    const onResponse = async (response: Response) => {
+      const entry = diagnostics.requests.find(r => r.url === response.url().slice(0, 160) && r.status === undefined); if (!entry) return;
+      entry.status = response.status();
+      if (/sevenrooms\.com\/api-yoa/.test(response.url())) entry.body = (await response.text().catch(() => '')).slice(0, 400);
+    };
+    const onFailed = (request: import('playwright').Request) => { const entry = diagnostics.requests.find(r => r.url === request.url().slice(0, 160) && r.status === undefined); if (entry) entry.failure = request.failure()?.errorText; };
+    const onConsole = (message: import('playwright').ConsoleMessage) => { if (['error', 'warning'].includes(message.type())) diagnostics.console.push(message.text().slice(0, 200)); };
+    page.on('request', onRequest); page.on('response', onResponse); page.on('requestfailed', onFailed); page.on('console', onConsole);
     try {
       this.step('SUBMITTING');
       const submit = page.locator('[data-test="checkout-button-complete"]');
       if (await submit.isDisabled()) throw new BookingFailure('SUBMIT_DISABLED', 'The widget kept Submit disabled.');
       await submit.click();
-      const outcome = await this.awaitOutcome(page, () => session.bookResponse, 40000);
+      let outcome = await this.awaitOutcome(page, session, 40000);
+      // reCAPTCHA Enterprise rejects automated browsers on the first try and then shows a checkbox. In a
+      // visible window a person can tick it; Pearl watches for the solved token and presses Submit again.
+      if (outcome === 'error' && this.options.humanSolveMs && diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line))) {
+        await page.waitForTimeout(1500);
+        if (await this.checkboxShowing(page)) {
+          this.step('SUBMITTING', 'human verification needed');
+          log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs });
+          await page.bringToFront().catch(() => {});
+          outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
+        }
+      }
       const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
-      const screenshot = await page.screenshot({ type: 'png', fullPage: false, timeout: 8000 }).catch(() => undefined);
-      if (outcome === 'error') throw Object.assign(new BookingFailure('WIDGET_REJECTED', 'SevenRooms did not accept the booking. The page reported an error.'), { pageText, screenshot });
+      diagnostics.finalUrl = page.url(); diagnostics.pageText = pageText.slice(0, 1500);
+      const screenshot = await page.screenshot({ type: 'png', fullPage: true, timeout: 8000 }).catch(() => undefined);
+      log('info', 'booking_submitted', { outcome, bookStatus: session.bookStatus, finalUrl: diagnostics.finalUrl, requests: diagnostics.requests.map(r => `${r.method} ${r.url.replace(/^https:\/\/www\.sevenrooms\.com/, '')} → ${r.status ?? r.failure ?? '…'}`), console: diagnostics.console.slice(0, 5) });
+      const serverSaid = (() => { const r = session.bookResponse as { msg?: string; message?: string; errors?: unknown; raw?: string } | undefined; return r?.msg || r?.message || (r?.errors ? JSON.stringify(r.errors).slice(0, 200) : '') || r?.raw || ''; })();
+      const captchaRejected = diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line));
+      if (outcome === 'captcha') throw Object.assign(new BookingFailure('CAPTCHA_UNSOLVED', 'SevenRooms asked for a human verification and nobody completed it in time. Nothing was booked. Pick the time again and tick the checkbox in the browser window when it appears.'), { pageText, screenshot });
+      if (outcome === 'error') throw Object.assign(new BookingFailure(captchaRejected ? 'CAPTCHA_REJECTED' : 'WIDGET_REJECTED', captchaRejected ? `SevenRooms' reCAPTCHA rejected this automated browser (HTTP ${session.bookStatus}). Nothing was booked.${this.options.humanSolveMs ? '' : ' Run the API without PEARL_HEADLESS so a person can pass the checkbox in the browser window.'}` : `SevenRooms did not accept the booking (HTTP ${session.bookStatus ?? '?'}${serverSaid ? `: ${serverSaid}` : ''}). Nothing was booked.`), { pageText, screenshot });
       if (outcome === 'timeout') throw Object.assign(new BookingFailure('NO_CONFIRMATION', 'No confirmation appeared within 40 seconds. Check your email before retrying.'), { pageText, screenshot });
       const reference = extractReference(session.bookResponse, pageText);
       this.step('CONFIRMED', reference);
-      return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${reference ? ` (${reference})` : ''}. A confirmation email is on its way.`, reference, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), screenshot, response: session.bookResponse ?? session.holdResponse };
+      return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${reference ? ` (${reference})` : ''}. A confirmation email is on its way.`, reference, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), screenshot, response: session.bookResponse ?? session.holdResponse, diagnostics };
     } catch (error) {
       const failure = error instanceof BookingFailure ? error : new BookingFailure('BROWSER_ERROR', `The booking browser hit an error while confirming: ${(error as Error)?.message?.split('\n')[0] ?? 'unknown'}`);
       const extra = error as { pageText?: string; screenshot?: Buffer };
+      if (!diagnostics.finalUrl) { diagnostics.finalUrl = page.url(); diagnostics.pageText = (extra.pageText ?? '').slice(0, 1500); }
       this.step('FAILED', failure.code);
-      return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText: extra.pageText, screenshot: extra.screenshot };
-    } finally { await this.close(); }
+      return { status: 'FAILED', code: failure.code, message: failure.message, policy: session.policy, pageUrl: page.url(), pageText: extra.pageText, screenshot: extra.screenshot, diagnostics };
+    } finally { page.off('request', onRequest); page.off('response', onResponse); page.off('requestfailed', onFailed); page.off('console', onConsole); await this.close(); }
   }
 
   /** Convenience for tests and scripts: prepare then confirm in one go. */
@@ -173,15 +204,39 @@ export class SevenRoomsBooker {
       return { text: text.replace(/^(?:Cancellation|Marketing) Policy\s*/i, '').slice(0, 600), screenshot };
     } catch { return { text: '' }; }
   }
-  /** Resolves 'confirmed' when the widget's book call succeeds or a confirmation page renders, 'error' on a visible failure. */
-  private async awaitOutcome(page: Page, bookResponse: () => unknown, timeoutMs: number): Promise<'confirmed' | 'error' | 'timeout'> {
+  /** True when reCAPTCHA has switched from its invisible badge to the "I'm not a robot" checkbox. */
+  private async checkboxShowing(page: Page) {
+    return page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').evaluateAll(els => els.some(el => { const r = el.getBoundingClientRect(); return r.width > 150 && r.height > 40 && getComputedStyle(el).visibility !== 'hidden'; })).catch(() => false);
+  }
+  /**
+   * Waits for a person to complete the visible checkbox. When the token appears, presses Submit again; if the
+   * person pressed it themselves, the book response arrives on its own. Ends on success, a final rejection, or timeout.
+   */
+  private async humanVerification(page: Page, session: Session, submit: import('playwright').Locator, timeoutMs: number): Promise<'confirmed' | 'error' | 'captcha' | 'timeout'> {
+    const end = Date.now() + timeoutMs; let pressed = false;
+    session.bookStatus = undefined; session.bookResponse = undefined;
+    while (Date.now() < end) {
+      if (session.bookStatus !== undefined) return session.bookStatus < 400 ? 'confirmed' : 'error';
+      if (!pressed) {
+        const token = await page.evaluate(() => { try { return (window as any).grecaptcha?.enterprise?.getResponse() || ''; } catch { return ''; } }).catch(() => '');
+        if (token) { pressed = true; log('info', 'booking_captcha_solved'); this.step('SUBMITTING', 'verification passed, submitting'); await submit.click().catch(() => {}); }
+      }
+      const text = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+      if (/reservation (?:is )?confirmed|you're all set|you’re all set|booking confirmed/i.test(text) || /confirmation|confirmed|success/i.test(page.url())) return 'confirmed';
+      await page.waitForTimeout(500);
+    }
+    return 'captcha';
+  }
+  /**
+   * Resolves 'confirmed' when the widget's book call succeeds or a confirmation page renders, 'error' when the
+   * server rejects it.
+   */
+  private async awaitOutcome(page: Page, session: Session, timeoutMs: number): Promise<'confirmed' | 'error' | 'captcha' | 'timeout'> {
     const end = Date.now() + timeoutMs;
     while (Date.now() < end) {
-      const response = bookResponse();
-      if (response && typeof response === 'object') {
-        const status = (response as { status?: number }).status;
-        if (status === undefined || status === 200) return 'confirmed';
-        return 'error';
+      if (session.bookStatus !== undefined && session.bookResponse !== undefined) {
+        const status = (session.bookResponse as { status?: number }).status ?? session.bookStatus;
+        return session.bookStatus < 400 && (status === undefined || status < 400) ? 'confirmed' : 'error';
       }
       const url = page.url();
       if (/confirmation|confirmed|success/i.test(url)) return 'confirmed';

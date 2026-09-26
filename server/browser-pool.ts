@@ -11,15 +11,15 @@ export interface ContextSource { context(options?: BrowserContextOptions): Promi
 export class BrowserPool implements ContextSource {
   private browser?: Promise<Browser>;
   private open = 0;
-  constructor(private options: { launch?: () => Promise<Browser>; headless?: boolean } = {}) {}
+  constructor(private options: { launch?: () => Promise<Browser>; headless?: boolean; /** e.g. 'chrome' to use the installed Google Chrome instead of Playwright's Chromium. */ channel?: string } = {}) {}
 
   private async browserInstance(): Promise<Browser> {
     const current = this.browser ? await this.browser.catch(() => undefined) : undefined;
     if (current?.isConnected()) return current;
-    this.browser = (this.options.launch ?? (() => chromium.launch({ headless: this.options.headless ?? true, timeout: 20_000 })))();
+    this.browser = (this.options.launch ?? (() => chromium.launch({ headless: this.options.headless ?? true, channel: this.options.channel, timeout: 20_000 })))();
     const browser = await this.browser;
     browser.once('disconnected', () => { log('warn', 'browser_disconnected'); if (this.browser) this.browser = undefined; });
-    log('info', 'browser_launched', { version: browser.version() });
+    log('info', 'browser_launched', { version: browser.version(), headless: this.options.headless ?? true, channel: this.options.channel ?? 'chromium' });
     return browser;
   }
 

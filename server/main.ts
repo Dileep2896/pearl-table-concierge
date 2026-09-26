@@ -11,11 +11,11 @@ import { CodexQueue } from './codex';
 import { log } from './logger';
 
 const config = loadConfig();
-const pool = new BrowserPool({ headless: config.headless });
+const pool = new BrowserPool({ headless: config.headless, channel: config.browserChannel });
 const ledger = new BookingLedger(config.ledgerPath);
 const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
 const jobs = new BookingJobs({
-  booker: onStep => new SevenRoomsBooker({ contexts: pool, onStep, requireFreeCancellation: config.requireFreeCancellation }),
+  booker: onStep => new SevenRoomsBooker({ contexts: pool, onStep, requireFreeCancellation: config.requireFreeCancellation, humanSolveMs: config.headless ? undefined : config.humanSolveMs }),
   ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs,
 });
 const app = createApp({

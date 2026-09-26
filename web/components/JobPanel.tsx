@@ -12,6 +12,7 @@ export function JobPanel({ job, holdLeft, onConfirm, onCancel, onDismiss }: Prop
   return <section className={`job ${job.state.toLowerCase()}`}>
     <h3>{titles[job.state] ?? job.state}</h3>
     <p><strong>{job.request.venue.name}</strong> · {dayLabel(job.request.date)} at {timeLabel(job.request.time)} · party of {job.request.partySize}</p>
+    {job.state === 'SUBMITTING' && job.steps.some(s => s.note === 'human verification needed') && !job.steps.some(s => s.note?.startsWith('verification passed')) && <p className="attention">The restaurant’s page asked for a human check. In the browser window Pearl opened, tick “I’m not a robot”. Pearl presses Submit for you once it clears.</p>}
     {(job.state === 'PREPARING' || job.state === 'SUBMITTING') && <ol>{job.steps.map((s, i) => <li key={i} className={i === job.steps.length - 1 ? 'live' : ''}>{stepText[s.step] ?? s.step}{s.note && !['FAILED', 'READY'].includes(s.step) ? ` · ${s.note}` : ''}</li>)}{!job.steps.length && <li className="live">Starting the browser</li>}</ol>}
     {job.state === 'READY' && job.prepared && <>
       <p className="who">Form filled as <strong>{job.prepared.values?.firstName ?? job.request.contact.firstName} {job.prepared.values?.lastName ?? job.request.contact.lastName}</strong> · {job.prepared.values?.emailAddress ?? job.request.contact.email} · {job.prepared.values?.phoneNumber ?? job.request.contact.phone}</p>

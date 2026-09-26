@@ -73,3 +73,4 @@ button.ghost { font: inherit; background: transparent; border: 1px solid var(--l
 .bookings summary { cursor: pointer; color: var(--muted); }
 .bookings ul { margin: 8px 0 4px; padding-left: 18px; }
 .bookings li { margin: 4px 0; }
+.attention { background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 10px 14px; font-weight: 500; }

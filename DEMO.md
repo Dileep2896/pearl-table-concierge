@@ -17,7 +17,7 @@ A web chat where a diner types a request in plain language, sees every open tabl
 1. **Understand.** The message goes through a deterministic parser (dates, time windows, party size, neighbourhood). When Codex is available it also goes to the model for a natural reply and looser phrasing; the model's answer is validated and merged over the parser's, so a bad model answer can never break a turn.
 2. **Find tables.** If the diner named one time ("at 7"), Pearl picks the closest bookable table at each restaurant and the diner only chooses the restaurant; a window ("7–9pm") shows every open time. One HTTP GET per venue to SevenRooms' widget endpoint, fanned out with at most six in flight and cached for 20 seconds, so a repeated question costs nothing. Bookable and request-only slots are shown separately.
 3. **Prepare.** On tap, an isolated context in the server's single shared Chromium opens the restaurant's own page, selects the time (the widget holds the table for 5 minutes), reads the cancellation policy, checks for card fields, and fills the guest form from a locally stored profile. It stops there.
-4. **Confirm.** The page shows what was filled, the policy and a hold countdown, with Confirm and Cancel. Only Confirm presses the restaurant's Submit, once. Cancel releases the hold.
+4. **Confirm.** The page shows what was filled, the policy and a hold countdown, with Confirm and Cancel. Only Confirm presses the restaurant's Submit. SevenRooms' reCAPTCHA Enterprise rejects that first press from any automated browser (HTTP 400, "ReCaptcha server-side validation failed") and swaps in an "I'm not a robot" checkbox, so the booking browser stays visible: the diner ticks the box, Pearl detects the token and presses Submit again. Cancel releases the hold.
 
 **Services.** The server is a small set of single-purpose modules: a booking state machine with an explicit transition table (`jobs.ts`), a browser pool (`browser-pool.ts`), a cached availability service, a Codex queue that serialises and caches model calls, a bookings ledger on disk, and one typed config. The HTTP layer only translates requests into service calls; every error has a stable code, every request a log line with an id and a timing. `AUDIT.md` records the review that produced this shape.
 
@@ -97,7 +97,7 @@ Measured today on a laptop:
 |---|---|---|
 | Widget selectors change (`data-time`, `checkout-button-complete`, input names) | Prepare fails at that step | "The widget did not open the checkout" or "no times shown"; no hold, no booking |
 | New required field (birthday, postcode) | Submit disabled or rejected | `SUBMIT_DISABLED` / `WIDGET_REJECTED`; nothing booked |
-| reCAPTCHA starts challenging headless Chromium | Submit rejected | `WIDGET_REJECTED`; check email, retry in a real browser |
+| reCAPTCHA rejects the automated submit (it does, every time) | First Submit gets HTTP 400, a checkbox appears | `CAPTCHA_REJECTED` when the browser is hidden; in a visible window the panel asks the diner to tick the box and Pearl resubmits. `CAPTCHA_UNSOLVED` if nobody does within two minutes |
 | Availability endpoint changes shape | Zod parse throws | Venue shows "could not check"; others still work |
 | Rate limiting or IP block | 4xx/5xx from the endpoint | Venues show "could not check"; bookings fail at open |
 | Restaurant leaves SevenRooms | Slug returns 400 | Venue shows "could not check" until removed |

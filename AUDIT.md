@@ -17,6 +17,10 @@ A review of the demo as first extracted from the monorepo, what was wrong with i
 | 9 | `/api/health` said nothing about the browser or the model. | No way to see readiness before a demo. | Health reports job counts, browser pool status and the Codex queue. |
 | 10 | Tests covered routes but not caching, queueing, retention or persistence. | Regressions in the new layers would be silent. | `tests/services.test.ts` plus extended API tests: 43 tests. |
 
+## Found while diagnosing "why can't it book"
+
+The confirm step *was* pressing Submit. SevenRooms' reCAPTCHA Enterprise rejected it: `POST …/book → 400 {"errors":["ReCaptcha server-side validation failed."]}`, in headless Chromium and in a visible automation-driven Chrome alike. Two defects hid this: the driver only captured responses under `/api-yoa/`, so the 400 on `/booking/dining/widget/<id>/book` was missed and the job timed out after 40 s as `NO_CONFIRMATION`; and nothing recorded what happened on the wire. Fixes: the book response is captured wherever it lives and its status decides the outcome (2 s to a clear answer); every post-Submit request, response, console error and the final URL are stored on the job and listed at `GET /api/jobs`; the rejection is classified `CAPTCHA_REJECTED`; and because the widget then shows an "I'm not a robot" checkbox, the browser is visible by default, the panel asks the diner to tick it, and Pearl presses Submit again once the token exists. Pearl still solves nothing itself.
+
 ## What did not change
 
 - The booking contract: prepare fills and holds, only the diner's confirm presses Submit, holds expire, cancel releases.

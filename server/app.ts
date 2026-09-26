@@ -77,5 +77,7 @@ export function createApp(services: AppServices) {
     return c.body(new Uint8Array(image), 200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=600' });
   });
   app.get('/api/bookings', async c => c.json({ bookings: services.ledger ? await services.ledger.list() : [] }));
+  /** Recent jobs with their outcomes and submit diagnostics, newest first. Contact details are stripped. */
+  app.get('/api/jobs', c => c.json({ jobs: services.jobs.list().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 20).map(({ request, ...job }) => ({ ...job, request: { venue: request.venue.slug, date: request.date, time: request.time, partySize: request.partySize } })) }));
   return app;
 }

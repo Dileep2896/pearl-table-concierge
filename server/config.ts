@@ -21,6 +21,8 @@ export type Config = {
   codexCacheMs: number;
   requireFreeCancellation: boolean;
   headless: boolean;
+  browserChannel?: string;
+  humanSolveMs: number;
 };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,6 +47,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     codexTimeoutMs: num(env.PEARL_CODEX_TIMEOUT_MS, 60_000),
     codexCacheMs: num(env.PEARL_CODEX_CACHE_MS, 5 * 60_000),
     requireFreeCancellation: env.PEARL_ALLOW_FEE_VENUES !== '1',
-    headless: env.PEARL_HEADED !== '1',
+    // Visible by default: SevenRooms' reCAPTCHA needs a person to tick a checkbox, which only works in a window you can see.
+    headless: env.PEARL_HEADLESS === '1',
+    browserChannel: env.PEARL_BROWSER_CHANNEL || undefined,
+    humanSolveMs: num(env.PEARL_HUMAN_SOLVE_MS, 120_000),
   };
 }

@@ -75,6 +75,19 @@ describe('SevenRoomsBooker', () => {
     await booker.close();
     expect((await booker.confirm()).code).toBe('NOT_PREPARED'); expect(record.posts).toHaveLength(1);
   });
+  it('reports a reCAPTCHA rejection as CAPTCHA_REJECTED with the server response in the diagnostics', async () => {
+    const record = { posts: [] as { url: string; body: string | null }[] };
+    const rejecting = checkoutPage.replace("then(r=>r.json()).then(j=>{document.body.innerHTML='<h1>Reservation confirmed</h1><p>Confirmation #: '+j.data.reference_code+'</p>'})", "then(r=>{if(!r.ok){console.error('[recaptcha] server-side validation failed {submittedMode: invisible, canStepUpToVisible: true}')}})");
+    const browser = await fixtureBrowser(record, { checkout: rejecting });
+    const original = browser.newContext.bind(browser);
+    browser.newContext = async options => { const context = await original(options); await context.route('**/booking/dining/widget/**/book', route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ errors: ['ReCaptcha server-side validation failed.'] }) })); return context; };
+    const booker = new SevenRoomsBooker({ contexts: { context: options => browser.newContext(options) } });
+    const result = await booker.book(request);
+    expect(result.status).toBe('FAILED'); expect(result.code).toBe('CAPTCHA_REJECTED'); expect(result.message).toMatch(/HTTP 400/);
+    expect(result.diagnostics?.requests.some(r => /\/book$/.test(r.url) && r.status === 400)).toBe(true);
+    expect(result.diagnostics?.console.some(l => /recaptcha/.test(l))).toBe(true);
+    await browser.close();
+  });
   it('stops before filling when the checkout renders a card frame', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
     const booker = new SevenRoomsBooker({ contexts: pool(record, { checkout: checkoutPage.replace(hiddenStripe, hiddenStripe + visibleStripe) }) });
