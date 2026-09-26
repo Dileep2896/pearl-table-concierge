@@ -135,6 +135,10 @@
 .venue-head h3 { font-size: 24px; margin: 0; font-weight: 500; }
 .venue-meta { display: flex; align-items: center; gap: 6px; margin: 5px 0 0; color: var(--muted); font-size: 13px; }
 .venue-meta svg { color: var(--brass); }
+.venue-head-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.tag-request { font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 3px 9px; }
+.request-note { margin: 8px 0 0; }
+.venue-request { opacity: .82; }
 .verify { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: var(--r-pill); padding: 5px 11px; white-space: nowrap; }
 .verify:hover { color: var(--brass-bright); border-color: var(--brass); text-decoration: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }

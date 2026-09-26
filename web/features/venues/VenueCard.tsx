@@ -7,12 +7,14 @@ import { Icon } from '../../ui/Icon';
 export function VenueCard({ entry, intent, selected, onPick }: { entry: VenueAvailability; intent: Intent; selected?: Slot; onPick: (v: Venue, s: Slot) => void }) {
   const { venue } = entry;
   const bookable = entry.slots.filter(s => s.type === 'book');
+  const requestOnly = entry.slots.length > 0 && bookable.length === 0;
   const site = `https://www.sevenrooms.com/explore/${venue.slug}/reservations/create/search?date=${intent.date}&party_size=${intent.partySize}&time=${intent.timeFrom ?? intent.exactTime}`;
-  return <motion.article layout variants={riseItem} className="venue">
+  return <motion.article layout variants={riseItem} className={`venue ${requestOnly ? 'venue-request' : ''}`}>
     <div className="venue-head">
       <div><h3>{venue.name}</h3><p className="venue-meta"><Icon name="pin" size={14} />{venue.neighborhood}, {venue.city} · {venue.cuisine}</p></div>
-      <a href={site} target="_blank" rel="noreferrer" className="verify">On SevenRooms</a>
+      <div className="venue-head-right">{requestOnly && <span className="tag-request">By request</span>}<a href={site} target="_blank" rel="noreferrer" className="verify">On SevenRooms</a></div>
     </div>
+    {requestOnly && <p className="muted quiet request-note">The restaurant confirms these times by hand, so they can’t be booked in one tap. Open it on SevenRooms to request.</p>}
     {entry.error && <p className="muted quiet">We couldn’t reach this restaurant just now.</p>}
     {!entry.error && !entry.slots.length && <p className="muted quiet">No tables in this window.</p>}
     {intent.exactTime && entry.pick && <div className="pickrow">

@@ -66,19 +66,26 @@ export function closestSlot(slots: Slot[], time: string): Slot | undefined {
 }
 
 const clock = (t: string) => t.replace(/^(\d\d):(\d\d)$/, (_, h, m) => `${Number(h) % 12 || 12}:${m} ${Number(h) >= 12 ? 'PM' : 'AM'}`);
+const venueWord = (n: number) => (n === 1 ? 'restaurant' : 'restaurants');
+const requestNote = (n: number) => `${n} ${venueWord(n)} nearby ${n === 1 ? 'takes' : 'take'} requests only — the restaurant confirms those by hand, so I can’t book them instantly.`;
+
 export function summarize(results: VenueAvailability[], intent: Intent) {
+  const requestOnly = results.filter(r => r.slots.length && !r.slots.some(s => s.type === 'book')).length;
   if (intent.exactTime) {
     const picks = results.filter(r => r.pick);
     const exact = picks.filter(r => r.pick!.time === intent.exactTime).length;
-    if (!picks.length) return `No open tables ${describeIntent(intent)}. Try a different time or date.`;
-    return `${picks.length} ${picks.length === 1 ? 'restaurant has' : 'restaurants have'} a table ${describeIntent(intent)}${exact < picks.length ? `, ${exact} at exactly ${clock(intent.exactTime)}` : ''}. Pick a restaurant and I will book the closest time for you.`;
+    if (!picks.length) return requestOnly
+      ? `No table I can book instantly ${describeIntent(intent)}. ${requestNote(requestOnly)} Try another time or date for an instant table.`
+      : `No open tables ${describeIntent(intent)}. Try a different time or date.`;
+    return `${picks.length} ${picks.length === 1 ? 'restaurant has' : 'restaurants have'} a table ${describeIntent(intent)}${exact < picks.length ? `, ${exact} at exactly ${clock(intent.exactTime)}` : ''}. Pick a restaurant and I’ll book the closest time for you.`;
   }
   const bookable = results.flatMap(r => r.slots.filter(s => s.type === 'book'));
   const withTables = results.filter(r => r.slots.some(s => s.type === 'book')).length;
-  const requestOnly = results.filter(r => r.slots.length && !r.slots.some(s => s.type === 'book')).length;
-  if (!bookable.length && !requestOnly) return `No open tables ${describeIntent(intent)}. Try a different time window or date.`;
-  const parts = [`Found ${bookable.length} open ${bookable.length === 1 ? 'time' : 'times'} at ${withTables} ${withTables === 1 ? 'restaurant' : 'restaurants'} ${describeIntent(intent)}.`];
+  if (!bookable.length) return requestOnly
+    ? `No tables I can book instantly ${describeIntent(intent)}. ${requestNote(requestOnly)} Try a different time or date for an instant table.`
+    : `No open tables ${describeIntent(intent)}. Try a different time window or date.`;
+  const parts = [`Found ${bookable.length} open ${bookable.length === 1 ? 'time' : 'times'} at ${withTables} ${venueWord(withTables)} ${describeIntent(intent)}.`];
   if (requestOnly) parts.push(`${requestOnly} more ${requestOnly === 1 ? 'takes' : 'take'} requests only.`);
-  parts.push('Tap a time and I will book it after you confirm.');
+  parts.push('Tap a time and I’ll book it after you confirm.');
   return parts.join(' ');
 }

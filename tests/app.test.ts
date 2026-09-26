@@ -139,6 +139,15 @@ describe('exact-time picks', () => {
     expect(closestSlot([slot('19:00')], '19:00')?.time).toBe('19:00');
     expect(closestSlot([slot('19:00', 'request')], '19:00')).toBeUndefined();
   });
+  it('is honest when only request-only tables exist', () => {
+    const venue = { slug: 'benusf', name: 'Benu', city: 'San Francisco', neighborhood: 'SoMa', timezone: 'America/Los_Angeles', address: '', cuisine: '' };
+    const reqOnly = [{ venue, slots: [slot('19:00', 'request'), slot('19:30', 'request')] }];
+    const windowText = summarize(reqOnly, { date: '2026-10-03', partySize: 2, neighborhood: 'SoMa', timeFrom: '19:00', timeTo: '21:00' });
+    expect(windowText).toMatch(/No tables I can book instantly/); expect(windowText).toMatch(/requests only/); expect(windowText).not.toMatch(/Found 0/); expect(windowText).not.toMatch(/Tap a time/);
+    const exactText = summarize(reqOnly, { date: '2026-10-03', partySize: 2, neighborhood: 'SoMa', exactTime: '20:00', timeFrom: '19:30', timeTo: '21:30' });
+    expect(exactText).toMatch(/No table I can book instantly/); expect(exactText).not.toMatch(/Pick a restaurant/);
+    expect(summarize([{ venue, slots: [] }], { date: '2026-10-03', partySize: 2, neighborhood: 'SoMa', timeFrom: '19:00', timeTo: '21:00' })).toMatch(/No open tables/);
+  });
   it('summarises picks per restaurant', () => {
     const venue = { slug: 'x', name: 'X', city: 'New York', neighborhood: 'West Village', timezone: 'America/New_York', address: '', cuisine: '' };
     const text = summarize([{ venue, slots: [slot('19:15')], pick: slot('19:15') }, { venue: { ...venue, slug: 'y' }, slots: [slot('19:00')], pick: slot('19:00') }], { exactTime: '19:00', date: '2026-10-02', partySize: 2, neighborhood: 'West Village', timeFrom: '18:30', timeTo: '20:30' });
