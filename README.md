@@ -6,6 +6,20 @@ A self-contained web app. A diner types something like *"table for 2 in the West
 
 No paid APIs required for the local demo. Availability comes from SevenRooms' public reservation widget endpoint, and the booking is made by a Playwright browser driving that same widget exactly as a guest would. Chat understanding runs through a deterministic parser first; when a model is available it also uses one. To deploy, add an `ANTHROPIC_API_KEY` (the agent then runs on any server) and a `BROWSERBASE_API_KEY` (a cloud browser does the booking). Locally, chat can instead use the Codex CLI if it is signed in, and the parser alone needs no key at all.
 
+**Live:** https://tavola-table-concierge.onrender.com · **Code:** https://github.com/Dileep2896/tavola-table-concierge
+
+## Architecture, trade-offs, and cuts
+
+**Architecture.** A React single-page app (Vite, Zustand, Framer Motion) talks to a small Hono API that does three things: understand the request (a deterministic parser first, the Anthropic API only for natural phrasing), find availability (one cached call per venue to SevenRooms' public widget), and book (a Playwright browser drives SevenRooms' guest checkout in two phases — hold the table, then submit only on the diner's confirm — tracked by an explicit job state machine). In production it runs as one Render web service that serves the built site and the API on one port, with a Browserbase cloud browser doing the booking. The seven Mermaid diagrams are in `ARCHITECTURE.md`; the long-form write-up and the cost / time / breakage / scale answers are in `DEMO.md`.
+
+**Trade-offs.**
+- **No paid API, no bot evasion.** Availability and booking both go through SevenRooms' public surfaces, driven like a person. If a platform blocks it, the answer is a partnership, not a workaround.
+- **reCAPTCHA stays human.** It rejects the first automated Submit every time, so a person does the one tick — and adds any card — inside an embedded live view of the cloud browser. The agent never types a card number or a password.
+- **Parser first, model optional.** Cheaper and more robust than sending every turn to a model; the model only improves phrasing, and a bad reply can't break a turn.
+- **Confirm before submit.** Only the diner's click books, so it is slower than a fully-automatic path but never books the wrong thing.
+
+**What I cut.** OpenTable (bot wall) and Apify (paid per booking); restaurant search (a curated 21-venue list of NY + SF restaurants instead); multi-user and accounts; in-app cancel and modify. V2 would add an hourly canary per venue to catch widget changes, direct hold calls for hot 10:00:00 releases, a second platform (Resy) through the same adapter boundary, and a tokenized card so card-required venues can be booked end to end.
+
 ## Run
 
 ```bash
