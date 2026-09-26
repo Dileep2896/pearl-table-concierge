@@ -16,7 +16,7 @@ const ledger = new BookingLedger(config.ledgerPath);
 const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
 const jobs = new BookingJobs({
   booker: onStep => new SevenRoomsBooker({ contexts: pool, onStep, requireFreeCancellation: config.requireFreeCancellation, humanSolveMs: config.headless ? undefined : config.humanSolveMs }),
-  ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs,
+  ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs, humanSolveMs: config.headless ? undefined : config.humanSolveMs,
 });
 const app = createApp({
   useCodex: config.useCodex, codex: codex.run,

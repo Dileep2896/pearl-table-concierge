@@ -6,7 +6,7 @@ export type VenueAvailability = { venue: Venue; slots: Slot[]; pick?: Slot; erro
 export type ChatResponse = { reply: string; intent: Intent; ready: boolean; source: 'codex' | 'parser'; results: VenueAvailability[] | null };
 export type Contact = { firstName: string; lastName: string; email: string; phone: string };
 export type JobState = 'PREPARING' | 'READY' | 'SUBMITTING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
-export type BookingJob = { id: string; state: JobState; steps: { step: string; note?: string; at: string }[]; request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact }; prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string }; result?: { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean } };
+export type BookingJob = { id: string; state: JobState; steps: { step: string; note?: string; at: string }[]; request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact }; prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string }; verification?: { requestedAt: string; expiresAt: string; passedAt?: string }; result?: { status: string; code: string; message: string; reference?: string; policy?: string; pageUrl?: string; hasEvidence?: boolean } };
 export type LedgerEntry = { id: string; confirmedAt: string; venue: string; venueName: string; city: string; date: string; time: string; partySize: number; reference?: string; pageUrl?: string };
 
 async function json<T>(response: Response): Promise<T> {

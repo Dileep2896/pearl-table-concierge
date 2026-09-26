@@ -145,7 +145,9 @@ export class SevenRoomsBooker {
         if (await this.checkboxShowing(page)) {
           this.step('SUBMITTING', 'human verification needed');
           log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs });
+          // Put the checkbox where the person will see it: window to the front, checkbox scrolled into view.
           await page.bringToFront().catch(() => {});
+          await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
           outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
         }
       }
@@ -158,7 +160,7 @@ export class SevenRoomsBooker {
       if (outcome === 'captcha') throw Object.assign(new BookingFailure('CAPTCHA_UNSOLVED', 'SevenRooms asked for a human verification and nobody completed it in time. Nothing was booked. Pick the time again and tick the checkbox in the browser window when it appears.'), { pageText, screenshot });
       if (outcome === 'error') throw Object.assign(new BookingFailure(captchaRejected ? 'CAPTCHA_REJECTED' : 'WIDGET_REJECTED', captchaRejected ? `SevenRooms' reCAPTCHA rejected this automated browser (HTTP ${session.bookStatus}). Nothing was booked.${this.options.humanSolveMs ? '' : ' Run the API without PEARL_HEADLESS so a person can pass the checkbox in the browser window.'}` : `SevenRooms did not accept the booking (HTTP ${session.bookStatus ?? '?'}${serverSaid ? `: ${serverSaid}` : ''}). Nothing was booked.`), { pageText, screenshot });
       if (outcome === 'timeout') throw Object.assign(new BookingFailure('NO_CONFIRMATION', 'No confirmation appeared within 40 seconds. Check your email before retrying.'), { pageText, screenshot });
-      const reference = extractReference(session.bookResponse, pageText);
+      const reference = extractReference(session.bookResponse, pageText) ?? (/is_success=true/.test(page.url()) ? 'confirmed' : undefined);
       this.step('CONFIRMED', reference);
       return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${reference ? ` (${reference})` : ''}. A confirmation email is on its way.`, reference, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), screenshot, response: session.bookResponse ?? session.holdResponse, diagnostics };
     } catch (error) {
@@ -235,8 +237,10 @@ export class SevenRoomsBooker {
     const end = Date.now() + timeoutMs;
     while (Date.now() < end) {
       if (session.bookStatus !== undefined && session.bookResponse !== undefined) {
-        const status = (session.bookResponse as { status?: number }).status ?? session.bookStatus;
-        return session.bookStatus < 400 && (status === undefined || status < 400) ? 'confirmed' : 'error';
+        // The HTTP status decides. A numeric `status` in the body can only make a 2xx worse, never better.
+        const bodyStatus = (session.bookResponse as { status?: unknown }).status;
+        const bodyRejects = typeof bodyStatus === 'number' && bodyStatus >= 400;
+        return session.bookStatus < 400 && !bodyRejects ? 'confirmed' : 'error';
       }
       const url = page.url();
       if (/confirmation|confirmed|success/i.test(url)) return 'confirmed';

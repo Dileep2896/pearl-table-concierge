@@ -73,4 +73,7 @@ button.ghost { font: inherit; background: transparent; border: 1px solid var(--l
 .bookings summary { cursor: pointer; color: var(--muted); }
 .bookings ul { margin: 8px 0 4px; padding-left: 18px; }
 .bookings li { margin: 4px 0; }
-.attention { background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 10px 14px; font-weight: 500; }
+.attention { display: flex; align-items: center; gap: 12px; background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 12px 14px; font-weight: 500; animation: pulse 1.2s ease-in-out infinite; }
+.attention .count { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; background: rgba(0,0,0,.15); border-radius: 8px; padding: 4px 8px; }
+.ok { color: var(--ok); font-weight: 500; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(217,139,111,.55); } 50% { box-shadow: 0 0 0 8px rgba(217,139,111,0); } }

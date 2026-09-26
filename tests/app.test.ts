@@ -11,17 +11,21 @@ import type { SevenRoomsBooker, PrepareResult, BookingResult } from '../server/b
 import type { Slot } from '../server/sevenrooms';
 
 /** A booker double that reports steps and resolves when the test says so. */
-function fakeBooker(script: { prepare?: PrepareResult; confirm?: BookingResult; delayMs?: number }) {
+function fakeBooker(script: { prepare?: PrepareResult; confirm?: BookingResult; delayMs?: number; onStep?: (step: 'SUBMITTING', note?: string) => void; humanCheck?: boolean }) {
   const calls: string[] = [];
   const booker = {
     calls, ready: false,
     async prepare() { calls.push('prepare'); await new Promise(r => setTimeout(r, script.delayMs ?? 5)); booker.ready = true; return script.prepare ?? { status: 'READY', code: 'READY', message: 'ok', policy: 'Please cancel 2 hours ahead.', values: { firstName: 'Test' }, holdSeconds: 300 }; },
-    async confirm() { calls.push('confirm'); booker.ready = false; return script.confirm ?? { status: 'CONFIRMED', code: 'CONFIRMED', message: 'done', reference: 'REF123' }; },
+    async confirm() {
+      calls.push('confirm');
+      if (script.humanCheck) { script.onStep?.('SUBMITTING', 'human verification needed'); await new Promise(r => setTimeout(r, 30)); script.onStep?.('SUBMITTING', 'verification passed, submitting'); }
+      booker.ready = false; return script.confirm ?? { status: 'CONFIRMED', code: 'CONFIRMED', message: 'done', reference: 'REF123' };
+    },
     async close() { calls.push('close'); booker.ready = false; },
   };
   return booker as unknown as SevenRoomsBooker & { calls: string[] };
 }
-async function harness(booker: () => SevenRoomsBooker, jobsOptions: Partial<JobsOptions> = {}) {
+async function harness(booker: JobsOptions['booker'], jobsOptions: Partial<JobsOptions> = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'pearl-app-'));
   const ledger = new BookingLedger(join(dir, 'bookings.json'));
   const jobs = new BookingJobs({ booker, ledger, ...jobsOptions });
@@ -98,6 +102,21 @@ describe('booking API', () => {
       expect(booker.calls).toEqual(['prepare', 'close']);
       await wait(60); h.jobs.sweep();
       expect((await h.app.request(`/api/book/${job.id}`)).status).toBe(404);
+    } finally { await h.cleanup(); }
+  });
+  it('exposes the human-verification window while the checkbox is waiting', async () => {
+    const script: Parameters<typeof fakeBooker>[0] = { humanCheck: true };
+    const h = await harness(onStep => { script.onStep = onStep as typeof script.onStep; return fakeBooker(script); }, { humanSolveMs: 90_000 });
+    try {
+      const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30);
+      await post(h.app, `/api/book/${job.id}/confirm`);
+      await wait(10);
+      const waiting = (await (await h.app.request(`/api/book/${job.id}`)).json() as { job: { state: string; verification?: { expiresAt: string; passedAt?: string } } }).job;
+      expect(waiting.state).toBe('SUBMITTING'); expect(waiting.verification?.passedAt).toBeUndefined(); expect(Date.parse(waiting.verification!.expiresAt) - Date.now()).toBeGreaterThan(80_000);
+      await wait(50);
+      const done = (await (await h.app.request(`/api/book/${job.id}`)).json() as { job: { state: string; verification?: { passedAt?: string } } }).job;
+      expect(done.state).toBe('CONFIRMED'); expect(done.verification?.passedAt).toBeTruthy();
     } finally { await h.cleanup(); }
   });
   it('answers bad input, unknown routes and oversized bodies with JSON errors', async () => {

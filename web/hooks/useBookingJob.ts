@@ -22,7 +22,7 @@ export function useBookingJob() {
         misses += 1;
         if (misses >= 8) { setJob(current => current && busyStates.includes(current.state) ? { ...current, state: 'FAILED', result: { status: 'FAILED', code: 'API_UNREACHABLE', message: `Lost contact with the demo API (${e instanceof Error ? e.message : 'no response'}). If you had already confirmed, check your email. Run npm run demo again if it is not running.` } } : current); return; }
       }
-      timer = setTimeout(poll, job.state === 'READY' ? 3000 : 1000);
+      timer = setTimeout(poll, job.state === 'READY' ? 3000 : 700);
     };
     timer = setTimeout(poll, 1000);
     return () => { stopped = true; clearTimeout(timer); };
@@ -36,6 +36,14 @@ export function useBookingJob() {
   const confirm = useCallback(async () => { if (!job) return; setError(null); try { const { job: next } = await api.confirm(job.id); setJob(next); } catch (e) { setError(e instanceof Error ? e.message : 'Could not confirm.'); } }, [job?.id]);
   const cancel = useCallback(async () => { if (!job) return; try { await api.cancel(job.id); } catch { /* already gone */ } setJob(null); }, [job?.id]);
   const holdLeft = job?.prepared ? Math.max(0, Math.round((Date.parse(job.prepared.holdExpiresAt) - Date.now()) / 1000)) : 0;
+  const verifyLeft = job?.verification && !job.verification.passedAt ? Math.max(0, Math.round((Date.parse(job.verification.expiresAt) - Date.now()) / 1000)) : 0;
+  const needsHuman = Boolean(job?.state === 'SUBMITTING' && job.verification && !job.verification.passedAt);
+  // A short chime and a title change the moment the checkbox appears, in case the page is not in focus.
+  useEffect(() => {
+    if (!needsHuman) { document.title = 'Pearl · Table concierge'; return; }
+    document.title = '✅ Tick the box · Pearl';
+    try { const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = 880; g.gain.value = 0.08; o.start(); o.frequency.setValueAtTime(1175, ctx.currentTime + 0.15); o.stop(ctx.currentTime + 0.3); setTimeout(() => void ctx.close(), 500); } catch { /* audio blocked */ }
+  }, [needsHuman]);
   void tick;
-  return { job, setJob, error, setError, start, confirm, cancel, holdLeft };
+  return { job, setJob, error, setError, start, confirm, cancel, holdLeft, verifyLeft, needsHuman };
 }

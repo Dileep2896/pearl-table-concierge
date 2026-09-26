@@ -77,7 +77,7 @@ export function App() {
         <p className="muted">Saved on this machine and used to fill the restaurant’s form. Nothing is booked until you confirm on the next step.</p>
         <div className="actions"><button type="button" className="ghost" onClick={() => setSelection(null)}>Not this one</button><button type="submit" className="primary" disabled={!profileComplete(profile.contact)}>Continue</button></div>
       </form>}
-      {job && <JobPanel job={job} holdLeft={booking.holdLeft} onConfirm={() => void booking.confirm()} onCancel={() => void booking.cancel()} onDismiss={() => { booking.setJob(null); if (job.state === 'CONFIRMED') setResults(null); }} />}
+      {job && <JobPanel job={job} holdLeft={booking.holdLeft} verifyLeft={booking.verifyLeft} onConfirm={() => void booking.confirm()} onCancel={() => void booking.cancel()} onDismiss={() => { booking.setJob(null); if (job.state === 'CONFIRMED') setResults(null); }} onRetry={() => { const r = job.request; void booking.start(r.venue, { venue: r.venue.slug, time: r.time, label: timeLabel(r.time), timeIso: `${r.date} ${r.time}:00`, area: '', type: 'book' }, r.date, r.partySize, profile.contact); }} />}
       {error && <div className="error">{error}</div>}
     </main>
     <form className="composer" onSubmit={send}>

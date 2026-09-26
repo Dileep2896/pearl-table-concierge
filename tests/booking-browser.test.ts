@@ -75,6 +75,15 @@ describe('SevenRoomsBooker', () => {
     await booker.close();
     expect((await booker.confirm()).code).toBe('NOT_PREPARED'); expect(record.posts).toHaveLength(1);
   });
+  it('treats a 2xx book response as confirmed even when the body carries a non-numeric status', async () => {
+    const record = { posts: [] as { url: string; body: string | null }[] };
+    const browser = await fixtureBrowser(record);
+    const original = browser.newContext.bind(browser);
+    browser.newContext = async options => { const context = await original(options); await context.route('**/booking/dining/widget/**/book', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'success', data: { reference_code: 'OK1234' } }) })); return context; };
+    const result = await new SevenRoomsBooker({ contexts: { context: options => browser.newContext(options) } }).book(request);
+    expect(result.status).toBe('CONFIRMED'); expect(result.reference).toBe('OK1234');
+    await browser.close();
+  });
   it('reports a reCAPTCHA rejection as CAPTCHA_REJECTED with the server response in the diagnostics', async () => {
     const record = { posts: [] as { url: string; body: string | null }[] };
     const rejecting = checkoutPage.replace("then(r=>r.json()).then(j=>{document.body.innerHTML='<h1>Reservation confirmed</h1><p>Confirmation #: '+j.data.reference_code+'</p>'})", "then(r=>{if(!r.ok){console.error('[recaptcha] server-side validation failed {submittedMode: invisible, canStepUpToVisible: true}')}})");

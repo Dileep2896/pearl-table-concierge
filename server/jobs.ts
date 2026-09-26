@@ -13,6 +13,8 @@ export type BookingJob = {
   request: { venue: Venue; date: string; time: string; partySize: number; contact: BookingRequest['contact'] };
   /** Present once the form is filled: what Pearl typed and what the restaurant's policy says. */
   prepared?: { policy?: string; values?: Record<string, string>; holdExpiresAt: string };
+  /** Set while the restaurant's page is waiting for the diner to tick the reCAPTCHA checkbox. */
+  verification?: { requestedAt: string; expiresAt: string; passedAt?: string };
   result?: JobResult;
 };
 const terminal: JobState[] = ['CONFIRMED', 'FAILED', 'CANCELLED', 'EXPIRED'];
@@ -31,6 +33,8 @@ export type JobsOptions = {
   minHoldMs?: number;
   /** How long finished jobs stay readable before they are dropped. */
   retentionMs?: number;
+  /** Mirrors the booker's human-solve window so the page can show a countdown. */
+  humanSolveMs?: number;
 };
 
 type Entry = { job: BookingJob; booker: SevenRoomsBooker; evidence?: Buffer; timers: ReturnType<typeof setTimeout>[] };
@@ -80,7 +84,12 @@ export class BookingJobs {
     }
     const id = randomUUID(); const at = this.now().toISOString();
     const job: BookingJob = { id, state: 'PREPARING', createdAt: at, updatedAt: at, steps: [], request: { venue, date: request.date, time: request.time, partySize: request.partySize, contact: request.contact } };
-    const entry: Entry = { job, booker: this.options.booker((step, note) => { job.steps.push({ step, note, at: this.now().toISOString() }); }), timers: [] };
+    const entry: Entry = { job, booker: this.options.booker((step, note) => {
+      const at = this.now().toISOString();
+      job.steps.push({ step, note, at }); job.updatedAt = at;
+      if (note === 'human verification needed') job.verification = { requestedAt: at, expiresAt: new Date(this.now().getTime() + (this.options.humanSolveMs ?? 120_000)).toISOString() };
+      if (note?.startsWith('verification passed') && job.verification) job.verification.passedAt = at;
+    }), timers: [] };
     this.entries.set(id, entry);
     entry.timers.push(setTimeout(() => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'TIMEOUT', message: 'The booking browser did not finish preparing within 2 minutes. Nothing was submitted.' }); }, this.options.prepareTimeoutMs ?? 120_000));
     void entry.booker.prepare({ ...request, timezone: venue.timezone }).then(prepared => {
