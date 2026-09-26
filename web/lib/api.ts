@@ -11,6 +11,7 @@ export type JobResult = { status: string; code: string; message: string; referen
 export type BookingJob = {
   id: string; state: JobState; createdAt?: string; updatedAt?: string; steps: BookingStep[];
   request: { venue: Venue; date: string; time: string; partySize: number; contact: Contact };
+  liveViewUrl?: string;
   prepared?: { policy?: string; feeWarning?: string; values?: Record<string, string>; holdExpiresAt: string };
   verification?: { requestedAt: string; expiresAt: string; passedAt?: string; liveViewUrl?: string };
   result?: JobResult;

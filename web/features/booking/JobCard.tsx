@@ -38,8 +38,12 @@ export function JobCard() {
       </header>
       <p className="job-line"><strong>{job.request.venue.name}</strong> · {dayLabel(job.request.date)} at {timeLabel(job.request.time)} · {job.request.partySize} guests</p>
 
-      {(job.state === 'PREPARING' || job.state === 'SUBMITTING') && <Stepper job={job} />}
-      {needsHuman && job.verification?.liveViewUrl ? <LiveVerification url={job.verification.liveViewUrl} secondsLeft={job.verification ? Math.max(0, Math.round((Date.parse(job.verification.expiresAt) - Date.now()) / 1000)) : 0} /> : needsHuman ? <Verification job={job} secondsLeft={job.verification ? Math.max(0, Math.round((Date.parse(job.verification.expiresAt) - Date.now()) / 1000)) : 0} /> : job.verification?.passedAt && job.state === 'SUBMITTING' && <Verification job={job} secondsLeft={0} />}
+      {job.liveViewUrl && ['PREPARING', 'READY', 'SUBMITTING'].includes(job.state) ? <div className="live-view">
+        {needsHuman ? <p className="notice warn"><Icon name="shield" size={16} /><span><strong>One tick from you.</strong> Tick “I’m not a robot” in the browser below — Pearl is doing the rest.</span></p>
+          : <p className="live-label"><Icon name="lock" size={13} /> Watching Pearl book on a secure cloud browser{job.state === 'SUBMITTING' ? ' · placing your reservation' : job.state === 'READY' ? ' · ready for you' : '…'}</p>}
+        <iframe className="live-frame tall" src={job.liveViewUrl} title="Live booking browser" allow="clipboard-write" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      </div> : (job.state === 'PREPARING' || job.state === 'SUBMITTING') && <Stepper job={job} />}
+      {needsHuman && !job.liveViewUrl ? <Verification job={job} secondsLeft={job.verification ? Math.max(0, Math.round((Date.parse(job.verification.expiresAt) - Date.now()) / 1000)) : 0} /> : job.verification?.passedAt && job.state === 'SUBMITTING' && <Verification job={job} secondsLeft={0} />}
 
       {job.state === 'READY' && job.prepared && <div className="ready">
         <p className="who">Filling in as <strong>{job.prepared.values?.firstName ?? job.request.contact.firstName} {job.prepared.values?.lastName ?? job.request.contact.lastName}</strong> · {job.prepared.values?.emailAddress ?? job.request.contact.email}</p>
@@ -63,12 +67,6 @@ export function JobCard() {
   </>}</AnimatePresence>;
 }
 
-function LiveVerification({ url, secondsLeft }: { url: string; secondsLeft: number }) {
-  return <div className="live-verify">
-    <p className="notice warn"><Icon name="shield" size={16} /><span><strong>One tick from you.</strong> The restaurant asked to confirm you’re human. Tick “I’m not a robot” in the window below — Pearl is filling everything else. <span className="tnum">{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}</span></span></p>
-    <iframe className="live-frame" src={url} title="Complete the verification" allow="clipboard-write" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-  </div>;
-}
 function ConfirmSeal() {
   return <motion.svg className="seal" width="56" height="56" viewBox="0 0 56 56" initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 260, damping: 16 }}>
     <circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.5" />

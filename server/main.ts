@@ -20,7 +20,7 @@ const remote = Boolean(config.browserbase || config.browserCdpUrl);
 const ledger = new BookingLedger(config.ledgerPath);
 const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
 const jobs = new BookingJobs({
-  booker: (onStep, onVerification) => new SevenRoomsBooker({ contexts, onStep, onVerification, requireFreeCancellation: config.requireFreeCancellation, remote, liveView: contexts.liveView?.bind(contexts), humanSolveMs: remote || !config.headless ? config.humanSolveMs : undefined }),
+  booker: (onStep, onVerification, onLiveView) => new SevenRoomsBooker({ contexts, onStep, onVerification, onLiveView, requireFreeCancellation: config.requireFreeCancellation, remote, liveView: contexts.liveView?.bind(contexts), humanSolveMs: remote || !config.headless ? config.humanSolveMs : undefined }),
   ledger, prepareTimeoutMs: config.prepareTimeoutMs, holdMarginMs: config.holdMarginMs, minHoldMs: config.minHoldMs, retentionMs: config.jobRetentionMs, humanSolveMs: config.headless ? undefined : config.humanSolveMs,
 });
 const app = createApp({

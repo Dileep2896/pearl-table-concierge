@@ -47,7 +47,7 @@ type Session = { context: BrowserContext; page: Page; bookResponse?: unknown; bo
  */
 export class SevenRoomsBooker {
   private session?: Session;
-  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number; /** True for a remote browser (Browserbase/CDP). */ remote?: boolean; /** Interactive live-view URL for the remote browser, so the diner can tick the captcha in-app. */ liveView?: (context: BrowserContext) => Promise<string | undefined>; /** Reports the live-view URL when human verification starts. */ onVerification?: (liveViewUrl?: string) => void } = {}) {}
+  constructor(private options: { contexts?: ContextSource; base?: string; onStep?: (step: BookingStep, note?: string) => void; requireFreeCancellation?: boolean; /** In a headed browser: how long to wait for a person to pass a visible captcha. */ humanSolveMs?: number; /** True for a remote browser (Browserbase/CDP). */ remote?: boolean; /** Interactive live-view URL for the remote browser, so the diner can tick the captcha in-app. */ liveView?: (context: BrowserContext) => Promise<string | undefined>; /** Reports the live-view URL when human verification starts. */ onVerification?: (liveViewUrl?: string) => void; /** Reports the live-view URL as soon as the remote browser is up, so the diner can watch. */ onLiveView?: (liveViewUrl?: string) => void } = {}) {}
   private get contexts(): ContextSource { return this.options.contexts ?? (this.options.contexts = new BrowserPool()); }
   private step(step: BookingStep, note?: string) { this.options.onStep?.(step, note); }
   get ready() { return Boolean(this.session); }
@@ -62,6 +62,8 @@ export class SevenRoomsBooker {
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on('dialog', dialog => { void dialog.dismiss().catch(() => {}); });
     const session: Session = { context, page, policy: '' };
+    // Surface the remote live view immediately so the diner watches Pearl fill the form.
+    if (this.options.remote && this.options.liveView && this.options.onLiveView) void this.options.liveView(context).then(u => this.options.onLiveView?.(u)).catch(() => {});
     page.on('response', (response: Response) => {
       const url = response.url();
       if (!/sevenrooms\.com/.test(url)) return;
@@ -97,7 +99,13 @@ export class SevenRoomsBooker {
       const phone = page.locator('input[name="phoneNumber"]');
       await phone.click(); await phone.fill(''); await phone.pressSequentially(input.contact.phone.replace(/^\+?1/, '').replace(/\D/g, ''), { delay: 20 });
       const policyBox = page.locator('#agreedToBookingPolicy');
-      if (await policyBox.count() > 0 && !(await policyBox.isChecked())) await policyBox.check({ force: true });
+      if (await policyBox.count() > 0 && !(await policyBox.isChecked())) {
+        await policyBox.check({ force: true, timeout: 4000 }).catch(async () => {
+          // Remote browsers sometimes don't register .check(); click the box directly, then via JS as a last resort.
+          await policyBox.click({ force: true, timeout: 3000 }).catch(() => {});
+          if (!(await policyBox.isChecked().catch(() => true))) await policyBox.evaluate((el: HTMLInputElement) => { if (!el.checked) el.click(); }).catch(() => {});
+        });
+      }
       const submit = page.locator('[data-test="checkout-button-complete"]');
       if (await submit.isDisabled()) throw new BookingFailure('SUBMIT_DISABLED', 'The widget kept Submit disabled after filling the form.');
       await page.waitForTimeout(400);
