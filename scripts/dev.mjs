@@ -1,7 +1,7 @@
 // Starts the demo API and the Vite dev server together. Ctrl+C stops both.
 import { spawn } from 'node:child_process';
 const children = [
-  spawn('node', ['--import', 'tsx', 'server/main.ts'], { stdio: 'inherit', env: process.env }),
+  spawn('node', ['--env-file-if-exists=.env', '--import', 'tsx', 'server/main.ts'], { stdio: 'inherit', env: process.env }),
   spawn('npx', ['vite'], { stdio: 'inherit', env: process.env, shell: process.platform === 'win32' }),
 ];
 const stop = () => { for (const child of children) child.kill('SIGINT'); };

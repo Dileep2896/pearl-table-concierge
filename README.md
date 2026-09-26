@@ -36,7 +36,9 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `PEARL_BROWSER_VISIBLE` | unset | By default the booking window launches off-screen and only appears if a reCAPTCHA checkbox is needed. `1` keeps it on-screen throughout |
 | `PEARL_BROWSER_CHANNEL` | unset | `chrome` uses the installed Google Chrome instead of Playwright's Chromium |
 | `PEARL_BROWSER_CDP_URL` | unset | Auto mode connects to a remote browser over CDP instead of launching locally |
-| `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID` | unset | Run auto mode on [Browserbase](https://browserbase.com): a fresh remote session per booking with residential proxies and captcha solving. Setting both switches the default booking mode to `auto` and needs no local browser, so it works on a deployed server. Pearl fills and submits; Browserbase supplies the IP and solves the reCAPTCHA |
+| `BROWSERBASE_API_KEY` | unset | Run auto mode on [Browserbase](https://browserbase.com) (the key alone; no project id). A fresh remote session per booking, no local browser, so it works on a deployed server. Setting it switches the default booking mode to `auto` |
+| `BROWSERBASE_PROXIES` | unset | `1` uses Browserbase residential proxies (paid plan). Needed to have a real chance of clearing reCAPTCHA; without it the session has a datacenter IP and the submit is usually rejected |
+| `BROWSERBASE_SOLVE_CAPTCHAS` | unset | `1` uses Browserbase's captcha solving (paid plan) |
 | `PEARL_HUMAN_SOLVE_MS` | 120000 | How long Pearl waits for you to tick the reCAPTCHA checkbox |
 | `PEARL_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
@@ -62,13 +64,15 @@ The confirm step auto-fills from a local profile stored at `.local/profile.json`
 
 ## Deploy with auto (Browserbase)
 
-Set `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` (from your Browserbase dashboard) and Pearl runs in `auto` mode against a remote Browserbase session per booking — proxies and captcha solving on — so it fills and submits server-side with no window:
+Put your key in `.env` (git-ignored):
 
-```bash
-BROWSERBASE_API_KEY=bb_... BROWSERBASE_PROJECT_ID=... npm run demo
+```
+BROWSERBASE_API_KEY=bb_live_...
 ```
 
-Note: Browserbase's proxies and captcha solving are a paid managed service (a free tier exists) and this route drives an automated booking, which is subject to SevenRooms' terms. The fully clean path to server-side auto is a SevenRooms partnership.
+Then `npm run demo` runs in `auto` mode against a remote Browserbase session per booking — no window, deployable. The key alone is enough (the project resolves from it).
+
+**Free plan caveat (important):** proxies and captcha solving are paid. On the free plan the session runs but has a datacenter IP, so SevenRooms' reCAPTCHA will usually reject the submit — the booking fails and you fall back to handoff. To actually clear reCAPTCHA you need the Developer plan and `BROWSERBASE_PROXIES=1` (add `BROWSERBASE_SOLVE_CAPTCHAS=1` for stepped-up challenges). This route drives an automated booking, subject to SevenRooms' terms; the clean path is a SevenRooms partnership.
 
 ## Booking modes
 

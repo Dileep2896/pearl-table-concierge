@@ -10,24 +10,41 @@ import { log } from './logger';
  */
 export class BrowserbaseSource implements ContextSource {
   private bb: Browserbase;
-  constructor(private options: { apiKey: string; projectId: string; proxies?: boolean; solveCaptchas?: boolean }) {
+  private projectId?: string;
+  constructor(private options: { apiKey: string; projectId?: string; proxies?: boolean; solveCaptchas?: boolean }) {
     this.bb = new Browserbase({ apiKey: options.apiKey });
+    this.projectId = options.projectId;
+  }
+
+  /** The API key alone identifies the account; the project is resolved from it once and cached. */
+  private async project(): Promise<string> {
+    if (this.projectId) return this.projectId;
+    const projects = await this.bb.projects.list();
+    const first = Array.isArray(projects) ? projects[0] : (projects as { data?: { id: string }[] }).data?.[0];
+    if (!first?.id) throw new Error('Browserbase returned no projects for this API key. Check BROWSERBASE_API_KEY.');
+    this.projectId = first.id;
+    return this.projectId;
   }
 
   async context(options: BrowserContextOptions = {}): Promise<BrowserContext> {
+    const projectId = await this.project();
+    const viewport = { width: options.viewport?.width ?? 430, height: options.viewport?.height ?? 900 };
+    // Proxies and captcha solving are paid features. Request them only if asked; on a 402 (free plan) fall back
+    // to a plain session so it still runs — though a plain datacenter session usually won't clear reCAPTCHA.
+    const wantExtras = Boolean(this.options.proxies || this.options.solveCaptchas);
+    const create = (extras: boolean) => this.bb.sessions.create({ projectId, ...(extras ? { proxies: Boolean(this.options.proxies) } : {}), browserSettings: { ...(extras ? { solveCaptchas: Boolean(this.options.solveCaptchas) } : {}), viewport } });
     let session;
     try {
-      session = await this.bb.sessions.create({
-        projectId: this.options.projectId,
-        proxies: this.options.proxies ?? true,
-        browserSettings: {
-          solveCaptchas: this.options.solveCaptchas ?? true,
-          viewport: { width: options.viewport?.width ?? 430, height: options.viewport?.height ?? 900 },
-        },
-      });
+      session = await create(wantExtras);
     } catch (error) {
       const status = (error as { status?: number }).status;
-      throw new Error(status === 401 ? 'Browserbase rejected the credentials (401). Check BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID.' : `Browserbase could not start a session: ${error instanceof Error ? error.message : String(error)}`);
+      if (status === 402 && wantExtras) {
+        log('warn', 'browserbase_no_proxies', { message: 'Proxies/captcha solving need a paid plan; retrying with a plain session (may not pass reCAPTCHA).' });
+        try { session = await create(false); }
+        catch (retry) { throw new Error(`Browserbase could not start a session: ${retry instanceof Error ? retry.message : String(retry)}`); }
+      } else {
+        throw new Error(status === 401 ? 'Browserbase rejected the credentials (401). Check BROWSERBASE_API_KEY.' : `Browserbase could not start a session: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
     log('info', 'browserbase_session', { id: session.id, region: (session as { region?: string }).region });
     const browser = await chromium.connectOverCDP(session.connectUrl, { timeout: 30_000 });

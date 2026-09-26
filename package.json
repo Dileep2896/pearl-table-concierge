@@ -10,7 +10,7 @@
   "scripts": {
     "demo": "node scripts/dev.mjs",
     "dev": "node scripts/dev.mjs",
-    "api": "node --import tsx server/main.ts",
+    "api": "node --env-file-if-exists=.env --import tsx server/main.ts",
     "web": "vite",
     "build": "vite build",
     "test": "vitest run",
