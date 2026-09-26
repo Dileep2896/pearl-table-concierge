@@ -75,12 +75,6 @@ export function createApp(services: AppServices) {
   app.post('/api/book/:id/confirm', async c => c.json({ job: await services.jobs.confirm(c.req.param('id')) }, 202));
   app.delete('/api/book/:id', async c => c.json({ job: await services.jobs.cancel(c.req.param('id')) }));
   app.get('/api/book/:id', c => c.json({ job: services.jobs.get(c.req.param('id')) }));
-  /** The restaurant's page at the moment Pearl stopped. Served separately so job polling stays small. */
-  app.get('/api/book/:id/evidence.png', c => {
-    const image = services.jobs.evidence(c.req.param('id'));
-    if (!image) throw new ApiError(404, 'NO_EVIDENCE', 'No screenshot for this booking.');
-    return c.body(new Uint8Array(image), 200, { 'content-type': 'image/png', 'cache-control': 'private, max-age=600' });
-  });
   app.get('/api/bookings', async c => c.json({ bookings: services.ledger ? await services.ledger.list() : [] }));
   /** Record a booking the diner completed themselves on SevenRooms (handoff mode or a manual finish). */
   app.post('/api/bookings', async c => {

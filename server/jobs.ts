@@ -37,7 +37,7 @@ export type JobsOptions = {
   humanSolveMs?: number;
 };
 
-type Entry = { job: BookingJob; booker: SevenRoomsBooker; evidence?: Buffer; timers: ReturnType<typeof setTimeout>[] };
+type Entry = { job: BookingJob; booker: SevenRoomsBooker; timers: ReturnType<typeof setTimeout>[] };
 
 /**
  * The booking state machine. Owns every job, its browser session, its timers and its evidence
@@ -52,7 +52,6 @@ export class BookingJobs {
   private now() { return this.options.now?.() ?? new Date(); }
   private entry(id: string) { const entry = this.entries.get(id); if (!entry) throw new ApiError(404, 'NOT_FOUND', 'That booking is unknown or has been cleaned up.'); return entry; }
   get(id: string): BookingJob { return this.entry(id).job; }
-  evidence(id: string): Buffer | undefined { return this.entry(id).evidence; }
   list(): BookingJob[] { return [...this.entries.values()].map(e => e.job); }
   status() { const jobs = this.list(); return { total: jobs.length, active: jobs.filter(j => !terminal.includes(j.state)).length }; }
 
@@ -62,10 +61,9 @@ export class BookingJobs {
     job.state = to; job.updatedAt = this.now().toISOString(); if (result) job.result = result;
     return true;
   }
-  private async finish(entry: Entry, to: JobState, result: JobResult, evidence?: Buffer) {
-    if (!this.move(entry, to, { ...result, hasEvidence: Boolean(evidence) })) return;
+  private async finish(entry: Entry, to: JobState, result: JobResult, _evidence?: Buffer) {
+    if (!this.move(entry, to, { ...result, hasEvidence: false })) return;
     for (const timer of entry.timers) clearTimeout(timer); entry.timers = [];
-    entry.evidence = evidence;
     await entry.booker.close();
     const { job } = entry;
     log('info', 'booking_finished', { id: job.id, venue: job.request.venue.slug, state: to, code: result.code, reference: result.reference });

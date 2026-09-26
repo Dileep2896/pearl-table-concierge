@@ -51,7 +51,6 @@ export function JobCard() {
       {job.result && job.state !== 'READY' && <p className={`job-message ${job.state === 'CONFIRMED' ? 'ok' : job.state === 'FAILED' || job.state === 'EXPIRED' ? 'bad' : ''}`}>{job.result.message}</p>}
       {job.state === 'FAILED' && job.result?.policy && job.result.code === 'CANCELLATION_FEE' && <blockquote className="policy-quote">{job.result.policy}</blockquote>}
       {job.result?.reference && <p className="reference"><span className="reference-label">Reservation</span><span className="reference-code">{job.result.reference}</span></p>}
-      {job.state === 'FAILED' && job.result?.hasEvidence && <figure className="evidence"><img src={`/api/book/${job.id}/evidence.png`} alt="The restaurant’s page when Pearl stopped" /><figcaption className="muted quiet">What the restaurant’s page showed.{job.result.pageUrl && <> <a href={job.result.pageUrl} target="_blank" rel="noreferrer">Open it</a></>}</figcaption></figure>}
 
       {job.state === 'PREPARING' && <div className="row-end"><Button variant="ghost" onClick={() => void cancel()}>Cancel</Button></div>}
       {job.state === 'FAILED' && handoffable.includes(job.result?.code ?? '') && <p className="muted quiet finish-hint">Pearl can’t finish this one for you. You can complete it yourself on the restaurant’s page.</p>}
