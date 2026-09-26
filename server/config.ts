@@ -23,6 +23,7 @@ export type Config = {
   headless: boolean;
   browserChannel?: string;
   humanSolveMs: number;
+  browserOffscreen: boolean;
 };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,5 +52,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     headless: env.PEARL_HEADLESS === '1',
     browserChannel: env.PEARL_BROWSER_CHANNEL || undefined,
     humanSolveMs: num(env.PEARL_HUMAN_SOLVE_MS, 120_000),
+    // The booking window stays off-screen while Pearl fills the form; it only comes into view if a reCAPTCHA checkbox appears.
+    browserOffscreen: !env.PEARL_BROWSER_VISIBLE && env.PEARL_HEADLESS !== '1',
   };
 }

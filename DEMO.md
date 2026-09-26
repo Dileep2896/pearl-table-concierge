@@ -14,7 +14,7 @@ A web chat where a diner types a request in plain language, sees every open tabl
 
 **What the diner does not have to do**
 
-Type much. One loose sentence plus a few taps reaches results: the concierge asks for whatever is missing as chips, remembers the profile so the contact form is pre-filled, and recommends one time per restaurant so the diner taps once instead of scanning a grid, and picks the closest table when a single time is named. A search that comes up dry offers nearby places by name rather than a dead end.
+Type much. One loose sentence plus a few taps reaches results: the concierge asks for whatever is missing as chips, remembers the profile so the contact form is pre-filled, and picks the closest table itself when a single time is named, and shows every open time when a window is given. A search that comes up dry offers nearby places by name rather than a dead end.
 
 **Flow, end to end**
 

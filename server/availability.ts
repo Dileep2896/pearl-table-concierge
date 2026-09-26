@@ -45,7 +45,7 @@ export class AvailabilityService {
     const results = await Promise.all(venues.map(async venue => {
       try {
         const slots = await this.slots({ venue: venue.slug, date: intent.date, partySize: intent.partySize, timeFrom: intent.timeFrom, timeTo: intent.timeTo });
-        return { venue, slots, pick: pickFor(slots, intent) };
+        return { venue, slots, pick: intent.exactTime ? closestSlot(slots, intent.exactTime) : undefined };
       } catch (error) {
         log('warn', 'availability_failed', { venue: venue.slug, message: error instanceof Error ? error.message : String(error) });
         return { venue, slots: [], error: 'lookup failed' } as VenueAvailability;
@@ -78,12 +78,6 @@ export function closestSlot(slots: Slot[], time: string): Slot | undefined {
   return slots.filter(s => s.type === 'book').sort((a, b) => Math.abs(minutesOf(a.time) - target) - Math.abs(minutesOf(b.time) - target) || minutesOf(b.time) - minutesOf(a.time))[0];
 }
 
-/** Pearl's recommended one-tap time: closest to the named time, or to the middle of the window. */
-export function pickFor(slots: Slot[], intent: Pick<Intent, 'exactTime' | 'timeFrom' | 'timeTo'>): Slot | undefined {
-  if (intent.exactTime) return closestSlot(slots, intent.exactTime);
-  if (intent.timeFrom && intent.timeTo) { const mid = Math.round((minutesOf(intent.timeFrom) + minutesOf(intent.timeTo)) / 2); return closestSlot(slots, `${String(Math.floor(mid / 60)).padStart(2, '0')}:${String(mid % 60).padStart(2, '0')}`); }
-  return slots.find(s => s.type === 'book');
-}
 
 const clock = (t: string) => t.replace(/^(\d\d):(\d\d)$/, (_, h, m) => `${Number(h) % 12 || 12}:${m} ${Number(h) >= 12 ? 'PM' : 'AM'}`);
 const venueWord = (n: number) => (n === 1 ? 'restaurant' : 'restaurants');
@@ -116,6 +110,6 @@ export function summarize(results: VenueAvailability[], intent: Intent, nearby: 
     : `No open tables ${describeIntent(intent)}.`) + (near || ' Try a different time window or date.');
   const parts = [`Found ${bookable.length} open ${bookable.length === 1 ? 'time' : 'times'} at ${withTables} ${venueWord(withTables)} ${describeIntent(intent)}.`];
   if (requestOnly) parts.push(`${requestOnly} more ${requestOnly === 1 ? 'takes' : 'take'} requests only.`);
-  parts.push('Pick a restaurant and I’ll book my suggested time, or choose another.');
+  parts.push('Tap a time and I’ll book it after you confirm.');
   return parts.join(' ');
 }

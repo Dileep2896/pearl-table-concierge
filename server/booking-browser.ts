@@ -145,7 +145,8 @@ export class SevenRoomsBooker {
         if (await this.checkboxShowing(page)) {
           this.step('SUBMITTING', 'human verification needed');
           log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs });
-          // Put the checkbox where the person will see it: window to the front, checkbox scrolled into view.
+          // Now the diner needs to see the window: move it on-screen, focus it, scroll the checkbox in.
+          await this.revealWindow(session).catch(() => {});
           await page.bringToFront().catch(() => {});
           await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
           outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
@@ -177,6 +178,14 @@ export class SevenRoomsBooker {
     const prepared = await this.prepare(request);
     if (prepared.status !== 'READY') return { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl, pageText: prepared.pageText, screenshot: prepared.screenshot };
     return this.confirm();
+  }
+
+  /** Moves the (off-screen) booking window into view so the diner can pass the checkbox. */
+  private async revealWindow(session: Session) {
+    const cdp = await session.context.newCDPSession(session.page);
+    const { windowId } = await cdp.send('Browser.getWindowForTarget') as { windowId: number };
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { left: 80, top: 80, width: 460, height: 940, windowState: 'normal' } });
+    await cdp.detach().catch(() => {});
   }
 
   /** Closes this booking's browser context, which also releases the widget's hold. Safe to call any time. */

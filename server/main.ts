@@ -11,7 +11,7 @@ import { CodexQueue } from './codex';
 import { log } from './logger';
 
 const config = loadConfig();
-const pool = new BrowserPool({ headless: config.headless, channel: config.browserChannel });
+const pool = new BrowserPool({ headless: config.headless, channel: config.browserChannel, args: config.browserOffscreen ? ['--window-position=-2400,0', '--window-size=460,940'] : undefined });
 const ledger = new BookingLedger(config.ledgerPath);
 const codex = new CodexQueue({ timeoutMs: config.codexTimeoutMs, cacheMs: config.codexCacheMs });
 const jobs = new BookingJobs({
