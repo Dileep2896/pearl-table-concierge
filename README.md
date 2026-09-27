@@ -1,5 +1,7 @@
 # Tavola table concierge
 
+[![CI](https://github.com/Dileep2896/tavola-table-concierge/actions/workflows/ci.yml/badge.svg)](https://github.com/Dileep2896/tavola-table-concierge/actions/workflows/ci.yml)
+
 Chat → live availability → real booking, on SevenRooms, with no paid APIs.
 
 A self-contained web app. A diner types something like *"table for 2 in the West Village Friday, 7–9pm"*, Tavola finds real open tables on SevenRooms across a curated list of New York and San Francisco restaurants, shows every open time in the window, and books the one the diner confirms.
@@ -56,6 +58,7 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `BROWSERBASE_PROXIES` | unset | `1` uses Browserbase residential proxies (paid plan). Needed to have a real chance of clearing reCAPTCHA; without it the session has a datacenter IP and the submit is usually rejected |
 | `BROWSERBASE_SOLVE_CAPTCHAS` | unset | `1` uses Browserbase's captcha solving (paid plan) |
 | `TAVOLA_HUMAN_SOLVE_MS` | 120000 | How long Tavola waits for you to finish a human step in the live view (tick reCAPTCHA, or add a card / sign in at a venue that needs one) |
+| `TAVOLA_RATE_LIMIT` | 120 | Per-IP requests per minute on `/api/*` (`0` disables) |
 | `TAVOLA_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
 `GET /api/health` reports the chat provider, the browser pool and job counts. `GET /api/bookings` lists confirmed reservations from the local ledger.

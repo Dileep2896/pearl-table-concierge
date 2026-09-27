@@ -52,7 +52,7 @@ const indexPath = join(rootDir, 'dist', 'index.html');
 const webDir = existsSync(indexPath) ? 'dist' : undefined;
 const indexHtml = webDir ? readFileSync(indexPath, 'utf8') : undefined;
 const app = createApp({
-  useCodex: useModel, bookingMode: config.bookingMode, model, modelSource,
+  useCodex: useModel, bookingMode: config.bookingMode, model, modelSource, rateLimitPerMinute: config.rateLimitPerMinute,
   availability: new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs }),
   jobs, ledger, profiles: new ProfileStore(config.profilePath), webDir, indexHtml,
   health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, chat: modelStatus() }),
@@ -77,3 +77,8 @@ async function shutdown(signal: string) {
 }
 process.once('SIGINT', () => { void shutdown('SIGINT'); });
 process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+
+// Baseline error capture: never let a stray rejection or exception take the server down silently. Wire a real
+// tracker (e.g. Sentry) here by forwarding these events when SENTRY_DSN is set.
+process.on('unhandledRejection', reason => log('error', 'unhandled_rejection', { message: reason instanceof Error ? reason.message : String(reason) }));
+process.on('uncaughtException', error => log('error', 'uncaught_exception', { message: error.message, stack: error.stack?.split('\n').slice(0, 3).join(' | ') }));

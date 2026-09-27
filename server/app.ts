@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { rateLimit } from './rate-limit';
 import { z } from 'zod/v4';
 import { venues, venueBySlug } from './venues';
 import { chatTurn, chatInputSchema } from './chat';
@@ -37,6 +38,8 @@ export type AppServices = {
   webDir?: string;
   /** The built index.html, served for any non-API GET so the single-page app loads on every path. */
   indexHtml?: string;
+  /** Per-IP request cap per minute on /api/* (0 disables). */
+  rateLimitPerMinute?: number;
 };
 
 /** HTTP only: parse, delegate, shape the response. Business rules live in the services. */
@@ -45,6 +48,7 @@ export function createApp(services: AppServices) {
   app.use('*', requestLogger);
   // 128 KB comfortably covers the largest schema-valid chat payload (60 messages × 2000 chars ≈ 120 KB).
   app.use('/api/*', bodyLimit({ maxSize: 128 * 1024, onError: c => c.json({ error: 'PAYLOAD_TOO_LARGE', message: 'Request body is too large.' }, 413) }));
+  if (services.rateLimitPerMinute && services.rateLimitPerMinute > 0) app.use('/api/*', rateLimit({ perMinute: services.rateLimitPerMinute }));
   app.onError((error, c) => {
     if (error instanceof ApiError) return c.json({ error: error.code, message: error.message, details: error.details }, error.status);
     log('error', 'unhandled', { id: c.get('requestId'), path: new URL(c.req.url).pathname, message: error instanceof Error ? error.message : String(error) });

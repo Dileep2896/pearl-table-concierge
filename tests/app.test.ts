@@ -199,4 +199,15 @@ describe('production serving and health', () => {
       expect((await res.json() as { chat: { pending: number } }).chat.pending).toBe(0);
     } finally { await jobs.close(); }
   });
+  it('rate-limits the API per IP', async () => {
+    const jobs = new BookingJobs({ booker: () => fakeBooker({}) });
+    const app = createApp({ useCodex: false, availability: new AvailabilityService(), jobs, profiles: new ProfileStore(join(tmpdir(), 'tavola-rl.json')), rateLimitPerMinute: 2 });
+    try {
+      expect((await app.request('/api/venues')).status).toBe(200);
+      expect((await app.request('/api/venues')).status).toBe(200);
+      const limited = await app.request('/api/venues');
+      expect(limited.status).toBe(429);
+      expect((await limited.json() as { error: string }).error).toBe('RATE_LIMITED');
+    } finally { await jobs.close(); }
+  });
 });
