@@ -18,7 +18,13 @@ export function isComplete(profile: Profile) {
   return Boolean(profile.firstName && profile.lastName && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email) && profile.phone.replace(/\D/g, '').length >= 10);
 }
 
-export class ProfileStore {
+/** Reads and writes the single diner profile. Backed by a JSON file locally, or Postgres when DATABASE_URL is set. */
+export interface ProfileReaderWriter {
+  read(): Promise<Profile>;
+  write(raw: unknown): Promise<Profile>;
+}
+
+export class ProfileStore implements ProfileReaderWriter {
   constructor(private path = process.env.TAVOLA_DEMO_PROFILE || defaultProfilePath) {}
   async read(): Promise<Profile> {
     try { return profileSchema.parse(JSON.parse(await readFile(this.path, 'utf8'))); }

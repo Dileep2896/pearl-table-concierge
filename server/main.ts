@@ -11,6 +11,7 @@ import { SevenRoomsBooker } from './booking-browser';
 import { BookingJobs } from './jobs';
 import { BookingLedger } from './ledger';
 import { ProfileStore } from './profile';
+import { Database } from './db';
 import { AvailabilityService } from './availability';
 import { Canary } from './canary';
 import { CodexQueue } from './codex';
@@ -23,7 +24,10 @@ const contexts: ContextSource = config.browserbase
   ? new BrowserbaseSource(config.browserbase)
   : new BrowserPool({ headless: config.headless, channel: config.browserChannel, cdpUrl: config.browserCdpUrl, args: config.browserOffscreen && !config.browserCdpUrl ? ['--window-position=-2400,0', '--window-size=460,940'] : undefined });
 const remote = Boolean(config.browserbase || config.browserCdpUrl);
-const ledger = new BookingLedger(config.ledgerPath);
+// Real persistence: Postgres when DATABASE_URL is set (survives a restart / redeploy), else local JSON files.
+const db = config.databaseUrl ? new Database(config.databaseUrl) : undefined;
+const ledger = db ?? new BookingLedger(config.ledgerPath);
+const profiles = db ?? new ProfileStore(config.profilePath);
 // Is the Codex CLI actually installed? On a deploy it usually is not, so probe once instead of spawning it
 // (and failing) on every chat turn, and so /api/health can report the real backend.
 const codexAvailable = () => { try { return spawnSync(process.env.TAVOLA_CODEX_BIN || 'codex', ['--version'], { timeout: 3000, stdio: 'ignore' }).status === 0; } catch { return false; } };
@@ -57,14 +61,14 @@ const canary = new Canary({ availability, intervalMs: config.canaryIntervalMs })
 const app = createApp({
   useCodex: useModel, bookingMode: config.bookingMode, model, modelSource, rateLimitPerMinute: config.rateLimitPerMinute,
   availability, canary,
-  jobs, ledger, profiles: new ProfileStore(config.profilePath), webDir, indexHtml,
+  jobs, ledger, profiles, webDir, indexHtml,
   health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, chat: modelStatus() }),
 });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
   const chatVia = modelSource === 'anthropic' ? `Anthropic ${config.ai.model}` : modelSource === 'codex' ? 'Codex CLI' : 'parser';
   console.log(`Tavola ${webDir ? 'app + API' : 'demo API'}: http://${config.host}:${info.port} · web ${webDir ? 'served from dist/' : 'via Vite dev server'} · chat via ${chatVia} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
-  log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: modelSource ?? 'parser', model: modelSource === 'anthropic' ? config.ai.model : undefined, canaryEveryMs: config.canaryIntervalMs || undefined, dataDir: config.dataDir });
+  log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: modelSource ?? 'parser', model: modelSource === 'anthropic' ? config.ai.model : undefined, persist: db ? 'postgres' : 'files', canaryEveryMs: config.canaryIntervalMs || undefined, dataDir: config.dataDir });
   canary.start();
 });
 
@@ -78,6 +82,7 @@ async function shutdown(signal: string) {
   canary.stop();
   await jobs.close().catch(() => {});
   await contexts.close?.().catch(() => {});
+  await db?.close().catch(() => {});
   process.exit(0);
 }
 process.once('SIGINT', () => { void shutdown('SIGINT'); });

@@ -6,10 +6,10 @@ import { z } from 'zod/v4';
 import { venues, venueBySlug } from './venues';
 import { chatTurn, chatInputSchema } from './chat';
 import { bookingRequestSchema } from './booking-browser';
-import { ProfileStore, isComplete } from './profile';
+import { isComplete, type ProfileReaderWriter } from './profile';
 import { AvailabilityService, summarize, type SearchIntent } from './availability';
 import { BookingJobs } from './jobs';
-import type { BookingLedger } from './ledger';
+import type { LedgerStore } from './ledger';
 import type { Canary } from './canary';
 import type { ModelRunner } from './ai';
 import { ApiError } from './errors';
@@ -30,8 +30,8 @@ export type AppServices = {
   modelSource?: 'anthropic' | 'codex';
   availability: AvailabilityService;
   jobs: BookingJobs;
-  profiles: ProfileStore;
-  ledger?: BookingLedger;
+  profiles: ProfileReaderWriter;
+  ledger?: LedgerStore;
   canary?: Canary;
   now?: () => Date;
   /** Extra fields for /api/health, e.g. the browser pool's status. */

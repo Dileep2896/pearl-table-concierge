@@ -34,6 +34,8 @@ export type Config = {
   rateLimitPerMinute: number;
   /** How often the canary sweeps every venue's availability (ms; 0 disables the schedule). */
   canaryIntervalMs: number;
+  /** A Postgres connection string. When set, bookings + profile persist in Postgres; otherwise in local JSON files. */
+  databaseUrl?: string;
   /** 'auto' drives a server browser (local); 'handoff' opens SevenRooms in the diner's own browser (deployable). */
   bookingMode: 'auto' | 'handoff';
 };
@@ -79,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     browserOffscreen: !env.TAVOLA_BROWSER_VISIBLE && env.TAVOLA_HEADLESS !== '1',
     rateLimitPerMinute: env.TAVOLA_RATE_LIMIT === '0' ? 0 : num(env.TAVOLA_RATE_LIMIT, 120),
     canaryIntervalMs: num(env.TAVOLA_CANARY_INTERVAL_MS, 0),
+    databaseUrl: env.DATABASE_URL || undefined,
     // Default to the in-app browser handoff (no separate window, deployable). TAVOLA_BOOKING_MODE=auto drives a local server browser instead.
     bookingMode: env.TAVOLA_BOOKING_MODE === 'auto' || (env.TAVOLA_BOOKING_MODE !== 'handoff' && Boolean(env.BROWSERBASE_API_KEY)) ? 'auto' : 'handoff',
   };

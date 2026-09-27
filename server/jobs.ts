@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { SevenRoomsBooker, type BookingRequest, type BookingStep, type SubmitDiagnostics } from './booking-browser';
 import type { Venue } from './venues';
-import type { BookingLedger } from './ledger';
+import type { LedgerStore } from './ledger';
 import { ApiError } from './errors';
 import { log } from './logger';
 
@@ -28,7 +28,7 @@ const transitions: Record<JobState, JobState[]> = {
 
 export type JobsOptions = {
   booker: (onStep: (step: BookingStep, note?: string) => void, onVerification: (liveViewUrl?: string) => void, onLiveView: (liveViewUrl?: string) => void) => SevenRoomsBooker;
-  ledger?: BookingLedger;
+  ledger?: LedgerStore;
   now?: () => Date;
   prepareTimeoutMs?: number;
   holdMarginMs?: number;

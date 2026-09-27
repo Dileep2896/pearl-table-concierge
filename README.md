@@ -44,7 +44,8 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `ANTHROPIC_API_KEY` | unset | Runs chat understanding through the Anthropic API, so the agent works on a deployed server with no local login. When set, it is preferred over the Codex CLI |
 | `TAVOLA_AI_MODEL` | claude-sonnet-5 | Which model acts as the agent. `claude-haiku-4-5` is cheapest, `claude-opus-5` most capable |
 | `TAVOLA_DEMO_API_PORT` / `TAVOLA_DEMO_WEB_PORT` | 8788 / 5180 | Ports |
-| `TAVOLA_DATA_DIR` | `.local` | Profile and bookings ledger |
+| `TAVOLA_DATA_DIR` | `.local` | Profile and bookings ledger, when stored as JSON files |
+| `DATABASE_URL` | unset | A Postgres connection string. When set, the bookings ledger and profile persist in Postgres (survives a restart); otherwise they live in JSON files under `TAVOLA_DATA_DIR` |
 | `TAVOLA_AVAILABILITY_CACHE_MS` | 20000 | How long a venue lookup is reused |
 | `TAVOLA_AVAILABILITY_CONCURRENCY` | 6 | Parallel SevenRooms requests |
 | `TAVOLA_JOB_RETENTION_MS` | 1800000 | How long finished bookings stay readable |

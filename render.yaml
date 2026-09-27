@@ -22,9 +22,13 @@ services:
       # Sweep every venue's availability hourly so SevenRooms drift shows up in /api/canary before a diner hits it.
       - key: TAVOLA_CANARY_INTERVAL_MS
         value: "3600000"
-      # Set these two in the Render dashboard (they are secret and not stored in the repo).
+      # Set these in the Render dashboard (secret, not stored in the repo).
       # With a Browserbase key, booking mode defaults to auto (cloud browser); without it, handoff.
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: BROWSERBASE_API_KEY
+        sync: false
+      # Optional: attach a Render Postgres and set DATABASE_URL so bookings + profile survive redeploys
+      # (the free instance disk is ephemeral). Without it, they fall back to JSON files.
+      - key: DATABASE_URL
         sync: false

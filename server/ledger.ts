@@ -9,7 +9,13 @@ export const ledgerEntrySchema = z.object({
 });
 export type LedgerEntry = z.infer<typeof ledgerEntrySchema>;
 
-export class BookingLedger {
+/** A store of confirmed reservations. Backed by a JSON file locally, or Postgres when DATABASE_URL is set. */
+export interface LedgerStore {
+  list(): Promise<LedgerEntry[]>;
+  append(entry: LedgerEntry): Promise<void>;
+}
+
+export class BookingLedger implements LedgerStore {
   private writing: Promise<void> = Promise.resolve();
   constructor(private path: string) {}
   async list(): Promise<LedgerEntry[]> {
