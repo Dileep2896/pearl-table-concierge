@@ -59,6 +59,7 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `BROWSERBASE_SOLVE_CAPTCHAS` | unset | `1` uses Browserbase's captcha solving (paid plan) |
 | `TAVOLA_HUMAN_SOLVE_MS` | 120000 | How long Tavola waits for you to finish a human step in the live view (tick reCAPTCHA, or add a card / sign in at a venue that needs one) |
 | `TAVOLA_RATE_LIMIT` | 120 | Per-IP requests per minute on `/api/*` (`0` disables) |
+| `TAVOLA_CANARY_INTERVAL_MS` | 0 | How often the canary sweeps every venue's availability (`0` off; e.g. `3600000` for hourly). Status at `GET /api/canary`, trigger with `POST /api/canary/run` |
 | `TAVOLA_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
 `GET /api/health` reports the chat provider, the browser pool and job counts. `GET /api/bookings` lists confirmed reservations from the local ledger.

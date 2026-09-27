@@ -12,6 +12,7 @@ import { BookingJobs } from './jobs';
 import { BookingLedger } from './ledger';
 import { ProfileStore } from './profile';
 import { AvailabilityService } from './availability';
+import { Canary } from './canary';
 import { CodexQueue } from './codex';
 import { createAnthropicRunner, type ModelRunner } from './ai';
 import { log } from './logger';
@@ -51,9 +52,11 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const indexPath = join(rootDir, 'dist', 'index.html');
 const webDir = existsSync(indexPath) ? 'dist' : undefined;
 const indexHtml = webDir ? readFileSync(indexPath, 'utf8') : undefined;
+const availability = new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs });
+const canary = new Canary({ availability, intervalMs: config.canaryIntervalMs });
 const app = createApp({
   useCodex: useModel, bookingMode: config.bookingMode, model, modelSource, rateLimitPerMinute: config.rateLimitPerMinute,
-  availability: new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs }),
+  availability, canary,
   jobs, ledger, profiles: new ProfileStore(config.profilePath), webDir, indexHtml,
   health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, chat: modelStatus() }),
 });
@@ -61,7 +64,8 @@ const app = createApp({
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
   const chatVia = modelSource === 'anthropic' ? `Anthropic ${config.ai.model}` : modelSource === 'codex' ? 'Codex CLI' : 'parser';
   console.log(`Tavola ${webDir ? 'app + API' : 'demo API'}: http://${config.host}:${info.port} · web ${webDir ? 'served from dist/' : 'via Vite dev server'} · chat via ${chatVia} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
-  log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: modelSource ?? 'parser', model: modelSource === 'anthropic' ? config.ai.model : undefined, dataDir: config.dataDir });
+  log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: modelSource ?? 'parser', model: modelSource === 'anthropic' ? config.ai.model : undefined, canaryEveryMs: config.canaryIntervalMs || undefined, dataDir: config.dataDir });
+  canary.start();
 });
 
 /** Release every hold and close Chromium before the process goes away. */
@@ -71,6 +75,7 @@ async function shutdown(signal: string) {
   log('info', 'api_stopping', { signal });
   // Stop accepting connections and let in-flight requests drain before tearing down browsers and exiting.
   await new Promise<void>(resolve => server.close(() => resolve())).catch(() => {});
+  canary.stop();
   await jobs.close().catch(() => {});
   await contexts.close?.().catch(() => {});
   process.exit(0);

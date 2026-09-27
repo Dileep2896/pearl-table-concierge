@@ -10,6 +10,7 @@ import { ProfileStore, isComplete } from './profile';
 import { AvailabilityService, summarize, type SearchIntent } from './availability';
 import { BookingJobs } from './jobs';
 import type { BookingLedger } from './ledger';
+import type { Canary } from './canary';
 import type { ModelRunner } from './ai';
 import { ApiError } from './errors';
 import { randomUUID } from 'node:crypto';
@@ -31,6 +32,7 @@ export type AppServices = {
   jobs: BookingJobs;
   profiles: ProfileStore;
   ledger?: BookingLedger;
+  canary?: Canary;
   now?: () => Date;
   /** Extra fields for /api/health, e.g. the browser pool's status. */
   health?: () => Record<string, unknown>;
@@ -61,8 +63,11 @@ export function createApp(services: AppServices) {
     return c.json({ error: 'NOT_FOUND', message: `No route for ${c.req.method} ${path}.` }, 404);
   });
 
-  app.get('/api/health', c => c.json({ ok: true, chat: services.modelSource ?? 'parser', bookingMode: services.bookingMode ?? 'auto', venues: venues.length, jobs: services.jobs.status(), ...services.health?.() }));
+  app.get('/api/health', c => { const canary = services.canary?.status(); return c.json({ ok: true, chat: services.modelSource ?? 'parser', bookingMode: services.bookingMode ?? 'auto', venues: venues.length, jobs: services.jobs.status(), ...(canary ? { canary: { checked: canary.checked, degraded: canary.degraded.length, lastRunAt: canary.lastRunAt } } : {}), ...services.health?.() }); });
   app.get('/api/venues', c => c.json({ venues }));
+  // Venue health from the canary sweeps: which SevenRooms venues answered and which look degraded.
+  app.get('/api/canary', c => c.json(services.canary?.status() ?? { checked: 0, degraded: [], venues: [] }));
+  app.post('/api/canary/run', async c => c.json(services.canary ? await services.canary.runOnce() : { checked: 0, degraded: [], venues: [] }));
 
   app.get('/api/profile', async c => { const profile = await services.profiles.read(); return c.json({ profile, complete: isComplete(profile) }); });
   app.put('/api/profile', async c => {
