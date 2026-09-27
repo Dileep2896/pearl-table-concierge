@@ -230,6 +230,8 @@
 .verify-body p { margin: 3px 0 0; font-size: 13.5px; color: var(--ink-soft); }
 .verify-count { margin-left: auto; font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600; color: var(--brass-bright); align-self: flex-start; }
 .ready .who { font-size: 14.5px; margin: 0 0 6px; }
+/* Keep Confirm/Release in view even when a tall live view fills the dialog: pin them to the card's bottom. */
+.ready .row-end { position: sticky; bottom: -28px; margin-top: 16px; padding: 14px 0 6px; background: var(--panel); box-shadow: 0 -16px 20px -10px var(--panel); }
 
 .live-verify { margin: 8px 0; display: flex; flex-direction: column; gap: 10px; }
 .live-frame { width: 100%; height: 360px; border: 1px solid var(--brass); border-radius: var(--r-md); background: #fff; }
@@ -294,6 +296,7 @@
 @media (max-width: 560px) {
   .grid2 { grid-template-columns: 1fr; }
   .job-card { padding: 20px; border-radius: var(--r-lg); }
+  .ready .row-end { bottom: -20px; }
   .job-head h2 { font-size: 25px; }
   .profile-name { display: none; }
 }
