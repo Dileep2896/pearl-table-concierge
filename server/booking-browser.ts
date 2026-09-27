@@ -167,30 +167,28 @@ export class SevenRoomsBooker {
       const submit = page.locator('[data-test="checkout-button-complete"]');
       if (await submit.isDisabled()) throw new BookingFailure('SUBMIT_DISABLED', 'The widget kept Submit disabled.');
       await submit.click();
-      let outcome = await this.awaitOutcome(page, session, 40000);
-      // reCAPTCHA Enterprise rejects automated browsers on the first try and then shows a checkbox. In a
-      // visible window a person can tick it; Tavola watches for the solved token and presses Submit again.
-      if (outcome === 'error' && this.options.humanSolveMs && diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line))) {
-        await page.waitForTimeout(1500);
-        // Remote browser (Browserbase): the solve arrives in the background — wait for the token and resubmit.
-        // Local browser: only wait if a checkbox is actually on screen for the diner to tick.
-        if (this.options.remote || await this.checkboxShowing(page)) {
-          // Remote (Browserbase): the diner ticks the checkbox in an embedded live view. Local: reveal the window.
-          const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
-          this.step('SUBMITTING', 'human verification needed');
-          this.options.onVerification?.(liveViewUrl);
-          log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: Boolean(this.options.remote), liveView: Boolean(liveViewUrl) });
-          if (!this.options.remote) {
-            await this.revealWindow(session).catch(() => {});
-            await page.bringToFront().catch(() => {});
-            await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-          }
-          outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
+      // reCAPTCHA Enterprise rejects the automated Submit and steps up to a checkbox. On a cloud browser this is
+      // near-certain, so give the invisible attempt only a short beat before handing the checkbox to the diner;
+      // locally, wait the full 40s. A booking counts as confirmed only when the book response carries a reference.
+      let outcome = await this.awaitOutcome(page, session, this.options.remote ? 8000 : 40000);
+      const recaptchaRejected = diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line));
+      // Not confirmed yet and a human can finish it: surface the live view / window and watch for the real booking.
+      if (outcome !== 'confirmed' && this.options.humanSolveMs && (this.options.remote || recaptchaRejected || await this.checkboxShowing(page))) {
+        // Remote (Browserbase): the diner ticks the checkbox in the embedded live view. Local: reveal the window.
+        const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
+        this.step('SUBMITTING', 'human verification needed');
+        this.options.onVerification?.(liveViewUrl);
+        log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: Boolean(this.options.remote), liveView: Boolean(liveViewUrl) });
+        if (!this.options.remote) {
+          await this.revealWindow(session).catch(() => {});
+          await page.bringToFront().catch(() => {});
+          await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
         }
+        outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
       }
       const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
       diagnostics.finalUrl = page.url(); diagnostics.pageText = pageText.slice(0, 1500);
-      log('info', 'booking_submitted', { outcome, bookStatus: session.bookStatus, finalUrl: diagnostics.finalUrl, requests: diagnostics.requests.map(r => `${r.method} ${r.url.replace(/^https:\/\/www\.sevenrooms\.com/, '')} → ${r.status ?? r.failure ?? '…'}`), console: diagnostics.console.slice(0, 5) });
+      log('info', 'booking_submitted', { outcome, bookStatus: session.bookStatus, hasRef: Boolean(extractReference(session.bookResponse)), finalUrl: diagnostics.finalUrl, requests: diagnostics.requests.map(r => `${r.method} ${r.url.replace(/^https:\/\/www\.sevenrooms\.com/, '')} → ${r.status ?? r.failure ?? '…'}`), console: diagnostics.console.slice(0, 5) });
       const serverSaid = (() => { const r = session.bookResponse as { msg?: string; message?: string; errors?: unknown; raw?: string } | undefined; return r?.msg || r?.message || (r?.errors ? JSON.stringify(r.errors).slice(0, 200) : '') || r?.raw || ''; })();
       const captchaRejected = diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line));
       if (outcome === 'captcha') throw Object.assign(new BookingFailure('CAPTCHA_UNSOLVED', 'SevenRooms asked for a human verification and nobody completed it in time. Nothing was booked. Pick the time again and tick the checkbox in the browser window when it appears.'), { pageText });
@@ -277,7 +275,12 @@ export class SevenRoomsBooker {
     const end = Date.now() + timeoutMs; let pressed = false;
     session.bookStatus = undefined; session.bookResponse = undefined;
     while (Date.now() < end) {
-      if (session.bookStatus !== undefined) return session.bookStatus < 400 ? 'confirmed' : 'error';
+      if (session.bookStatus !== undefined) {
+        if (this.bookingConfirmed(session, page)) return 'confirmed';
+        if (this.bookRejected(session)) return 'error';
+        // A 2xx with no reference is an interim step (the reCAPTCHA challenge) — keep waiting for the real book.
+        session.bookStatus = undefined; session.bookResponse = undefined;
+      }
       if (!pressed) {
         const token = await page.evaluate(() => { try { return (window as any).grecaptcha?.enterprise?.getResponse() || ''; } catch { return ''; } }).catch(() => '');
         if (token) { pressed = true; log('info', 'booking_captcha_solved'); this.step('SUBMITTING', 'verification passed, submitting'); await submit.click().catch(() => {}); }
@@ -286,23 +289,35 @@ export class SevenRoomsBooker {
     }
     return 'captcha';
   }
+  /** A real SevenRooms confirmation: a captured 2xx book response that carries a reference code, or the success page. */
+  private bookingConfirmed(session: Session, page: Page): boolean {
+    if (session.bookStatus === undefined || session.bookStatus >= 400) return false;
+    const bodyStatus = (session.bookResponse as { status?: unknown } | undefined)?.status;
+    if (typeof bodyStatus === 'number' && bodyStatus >= 400) return false;
+    return Boolean(extractReference(session.bookResponse)) || /is_success=true/.test(page.url());
+  }
+  /** A captured book response the server rejected (a 4xx/5xx, or a numeric error status inside a 2xx body). */
+  private bookRejected(session: Session): boolean {
+    if (session.bookStatus === undefined) return false;
+    const bodyStatus = (session.bookResponse as { status?: unknown } | undefined)?.status;
+    return session.bookStatus >= 400 || (typeof bodyStatus === 'number' && bodyStatus >= 400);
+  }
   /**
-   * Resolves 'confirmed' only when the widget's book call is captured with a 2xx status, 'error' when the server
-   * rejects it or the page shows a failure, 'timeout' otherwise. A confirmation-looking page alone is not enough.
+   * Resolves 'confirmed' only when the book call is captured with a reference code (or the success page loads),
+   * 'error' when the server rejects it or the page shows a failure, 'timeout' otherwise. A 2xx with no reference
+   * is an interim step (SevenRooms answers the reCAPTCHA challenge with one), so it never confirms on its own.
    */
   private async awaitOutcome(page: Page, session: Session, timeoutMs: number): Promise<'confirmed' | 'error' | 'captcha' | 'timeout'> {
     const end = Date.now() + timeoutMs;
     while (Date.now() < end) {
       if (session.bookStatus !== undefined && session.bookResponse !== undefined) {
-        // The HTTP status decides. A numeric `status` in the body can only make a 2xx worse, never better.
-        const bodyStatus = (session.bookResponse as { status?: unknown }).status;
-        const bodyRejects = typeof bodyStatus === 'number' && bodyStatus >= 400;
-        return session.bookStatus < 400 && !bodyRejects ? 'confirmed' : 'error';
+        if (this.bookRejected(session)) return 'error';
+        if (this.bookingConfirmed(session, page)) return 'confirmed';
+        // A 2xx with no confirmation reference: clear it and keep waiting for the response that actually confirms.
+        session.bookStatus = undefined; session.bookResponse = undefined;
       }
-      // Only a captured successful book response (above) counts as confirmed — a "confirmed"-looking URL or page
-      // text is never enough on its own, so Tavola never records a booking that did not actually go through.
       const text = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
-      if (/no longer available|something went wrong|unable to complete|could not be completed|try again later|verify you are human|captcha/i.test(text)) return 'error';
+      if (/no longer available|something went wrong|unable to complete|could not be completed|try again later/i.test(text)) return 'error';
       await page.waitForTimeout(500);
     }
     return 'timeout';
