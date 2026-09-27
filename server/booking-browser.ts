@@ -146,44 +146,47 @@ export class SevenRoomsBooker {
     const onConsole = (message: import('playwright').ConsoleMessage) => { if (['error', 'warning'].includes(message.type())) diagnostics.console.push(message.text().slice(0, 200)); };
     page.on('request', onRequest); page.on('response', onResponse); page.on('requestfailed', onFailed); page.on('console', onConsole);
     try {
-      // A card- or login-required venue: Tavola filled everything it can, and the diner completes the sensitive
-      // step in the live view (adds the card / signs in, then books). Tavola never presses Submit here — it
-      // watches the same session for the widget's confirmation and records it.
-      if (session.needsDiner) {
-        const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
-        this.step('SUBMITTING', session.needsDiner === 'card' ? 'add your card in the live browser and book' : 'sign in and book in the live browser');
+      // On a cloud browser Tavola filled the form and held the table; the diner finishes the booking in the
+      // embedded live view — presses Book and ticks the reCAPTCHA (and adds a card / signs in where the venue
+      // needs it). Tavola never presses Submit remotely: a programmatic submit is scored as a bot, so the
+      // reCAPTCHA checkbox often won't even render for the person, and a datacenter IP won't clear it. Only a real
+      // human click makes the challenge load and pass. Tavola just watches the session for the confirmation.
+      if (this.options.remote) {
+        const liveViewUrl = this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
+        const note = session.needsDiner === 'card' ? 'add your card in the live browser and press Book'
+          : session.needsDiner === 'login' ? 'sign in and press Book in the live browser'
+          : 'tick the check and press Book in the live browser';
+        this.step('SUBMITTING', note);
         this.options.onVerification?.(liveViewUrl);
-        const budget = Math.max(this.options.humanSolveMs ?? 0, 180_000);
-        log('info', 'booking_diner_finishing', { needsDiner: session.needsDiner, ms: budget, liveView: Boolean(liveViewUrl) });
+        const budget = this.options.humanSolveMs ?? 180_000;
+        log('info', 'booking_diner_finishing', { needsDiner: session.needsDiner ?? 'recaptcha', ms: budget, liveView: Boolean(liveViewUrl) });
         const outcome = await this.awaitOutcome(page, session, budget);
         const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
         diagnostics.finalUrl = page.url(); diagnostics.pageText = pageText.slice(0, 1500);
-        if (outcome !== 'confirmed') throw new BookingFailure(session.needsDiner === 'card' ? 'PAYMENT_REQUIRED' : 'LOGIN_REQUIRED', session.needsDiner === 'card' ? 'Tavola did not see a confirmation after the card step. Nothing was booked. Finish on SevenRooms if the browser above did not complete it.' : 'Tavola did not see a confirmation after the sign-in step. Nothing was booked. Finish on SevenRooms if needed.');
+        log('info', 'booking_submitted', { outcome, bookStatus: session.bookStatus, hasRef: Boolean(extractReference(session.bookResponse)), finalUrl: diagnostics.finalUrl, remote: true });
+        if (outcome !== 'confirmed') {
+          const code = session.needsDiner === 'card' ? 'PAYMENT_REQUIRED' : session.needsDiner === 'login' ? 'LOGIN_REQUIRED' : 'NO_CONFIRMATION';
+          throw Object.assign(new BookingFailure(code, 'Tavola did not see a confirmation from SevenRooms. Nothing was booked. Use "Finish on SevenRooms" to complete it in your own browser.'), { pageText });
+        }
         const dinerRef = extractReference(session.bookResponse, pageText) ?? (/is_success=true/.test(page.url()) ? 'confirmed' : undefined);
         this.step('CONFIRMED', dinerRef);
         return { status: 'CONFIRMED', code: 'CONFIRMED', message: `Reservation confirmed${dinerRef ? ` (${dinerRef})` : ''}. A confirmation email is on its way.`, reference: dinerRef, policy: session.policy, pageUrl: page.url(), pageText: pageText.slice(0, 1200), response: session.bookResponse ?? session.holdResponse, diagnostics };
       }
+      // Local window: Tavola presses Submit itself. reCAPTCHA rejects it and may step up to a checkbox; if one
+      // appears, reveal the window, let the person tick it, and resubmit once when the token lands.
       this.step('SUBMITTING');
       const submit = page.locator('[data-test="checkout-button-complete"]');
       if (await submit.isDisabled()) throw new BookingFailure('SUBMIT_DISABLED', 'The widget kept Submit disabled.');
       await submit.click();
-      // reCAPTCHA Enterprise rejects the automated Submit and steps up to a checkbox. On a cloud browser this is
-      // near-certain, so give the invisible attempt only a short beat before handing the checkbox to the diner;
-      // locally, wait the full 40s. A booking counts as confirmed only when the book response carries a reference.
-      let outcome = await this.awaitOutcome(page, session, this.options.remote ? 8000 : 40000);
+      let outcome = await this.awaitOutcome(page, session, 40000);
       const recaptchaRejected = diagnostics.console.some(line => /recaptcha.*validation failed/i.test(line));
-      // Not confirmed yet and a human can finish it: surface the live view / window and watch for the real booking.
-      if (outcome !== 'confirmed' && this.options.humanSolveMs && (this.options.remote || recaptchaRejected || await this.checkboxShowing(page))) {
-        // Remote (Browserbase): the diner ticks the checkbox in the embedded live view. Local: reveal the window.
-        const liveViewUrl = this.options.remote && this.options.liveView ? await this.options.liveView(session.context).catch(() => undefined) : undefined;
+      if (outcome !== 'confirmed' && this.options.humanSolveMs && (recaptchaRejected || await this.checkboxShowing(page))) {
         this.step('SUBMITTING', 'human verification needed');
-        this.options.onVerification?.(liveViewUrl);
-        log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: Boolean(this.options.remote), liveView: Boolean(liveViewUrl) });
-        if (!this.options.remote) {
-          await this.revealWindow(session).catch(() => {});
-          await page.bringToFront().catch(() => {});
-          await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-        }
+        this.options.onVerification?.(undefined);
+        log('info', 'booking_captcha_waiting', { ms: this.options.humanSolveMs, remote: false });
+        await this.revealWindow(session).catch(() => {});
+        await page.bringToFront().catch(() => {});
+        await page.locator('iframe[src*="recaptcha"][src*="anchor"][src*="size=normal"]').first().scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
         outcome = await this.humanVerification(page, session, submit, this.options.humanSolveMs);
       }
       const pageText = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).replace(/\s+/g, ' ').trim();
@@ -275,12 +278,8 @@ export class SevenRoomsBooker {
     const end = Date.now() + timeoutMs; let pressed = false;
     session.bookStatus = undefined; session.bookResponse = undefined;
     while (Date.now() < end) {
-      if (session.bookStatus !== undefined) {
-        if (this.bookingConfirmed(session, page)) return 'confirmed';
-        if (this.bookRejected(session)) return 'error';
-        // A 2xx with no reference is an interim step (the reCAPTCHA challenge) — keep waiting for the real book.
-        session.bookStatus = undefined; session.bookResponse = undefined;
-      }
+      // The person ticked the checkbox and Tavola resubmitted, so a captured non-rejected book response is the booking.
+      if (session.bookStatus !== undefined) return this.bookRejected(session) ? 'error' : 'confirmed';
       if (!pressed) {
         const token = await page.evaluate(() => { try { return (window as any).grecaptcha?.enterprise?.getResponse() || ''; } catch { return ''; } }).catch(() => '');
         if (token) { pressed = true; log('info', 'booking_captcha_solved'); this.step('SUBMITTING', 'verification passed, submitting'); await submit.click().catch(() => {}); }

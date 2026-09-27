@@ -97,7 +97,7 @@ export class BookingJobs {
       job.steps.push({ step, note, at }); job.updatedAt = at;
       if (note === 'human verification needed') job.verification = { requestedAt: at, expiresAt: new Date(this.now().getTime() + (this.options.humanSolveMs ?? 120_000)).toISOString() };
       if (note?.startsWith('verification passed') && job.verification) job.verification.passedAt = at;
-    }, liveViewUrl => { if (job.verification) job.verification.liveViewUrl = liveViewUrl; job.updatedAt = this.now().toISOString(); }, liveViewUrl => { if (liveViewUrl) { job.liveViewUrl = liveViewUrl; job.updatedAt = this.now().toISOString(); } }), timers: [] };
+    }, liveViewUrl => { const vAt = this.now().toISOString(); job.verification = { requestedAt: job.verification?.requestedAt ?? vAt, expiresAt: job.verification?.expiresAt ?? new Date(this.now().getTime() + Math.max(this.options.humanSolveMs ?? 0, 180_000)).toISOString(), liveViewUrl, passedAt: job.verification?.passedAt }; job.updatedAt = vAt; }, liveViewUrl => { if (liveViewUrl) { job.liveViewUrl = liveViewUrl; job.updatedAt = this.now().toISOString(); } }), timers: [] };
     this.entries.set(id, entry);
     entry.timers.push(setTimeout(() => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'TIMEOUT', message: 'The booking browser did not finish preparing within 2 minutes. Nothing was submitted.' }); }, this.options.prepareTimeoutMs ?? 120_000));
     void entry.booker.prepare({ ...request, timezone: venue.timezone }).then(prepared => {

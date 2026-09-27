@@ -90,7 +90,7 @@ describe('SevenRoomsBooker', () => {
     const browser = await fixtureBrowser(record);
     const original = browser.newContext.bind(browser);
     browser.newContext = async options => { const context = await original(options); await context.route('**/booking/dining/widget/**/book', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 200, data: {} }) })); return context; };
-    const result = await new SevenRoomsBooker({ contexts: { context: options => browser.newContext(options) }, remote: true }).book(request);
+    const result = await new SevenRoomsBooker({ contexts: { context: options => browser.newContext(options) }, remote: true, humanSolveMs: 2000 }).book(request);
     expect(result.status).toBe('FAILED'); expect(result.code).toBe('NO_CONFIRMATION');
     await browser.close();
   });
