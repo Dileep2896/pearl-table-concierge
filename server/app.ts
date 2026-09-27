@@ -5,6 +5,7 @@ import { rateLimit } from './rate-limit';
 import { z } from 'zod/v4';
 import { venues, venueBySlug } from './venues';
 import { chatTurn, chatInputSchema } from './chat';
+import type { createAgent } from './agent';
 import { bookingRequestSchema } from './booking-browser';
 import { isComplete, type ProfileReaderWriter } from './profile';
 import { AvailabilityService, summarize, type SearchIntent } from './availability';
@@ -28,6 +29,8 @@ export type AppServices = {
   model?: ModelRunner;
   /** Which backend `model` is, so a turn it answers is labelled correctly. */
   modelSource?: 'anthropic' | 'codex';
+  /** Model-driven agent: when set, it drives understand→search→reply via tool use; the parser is the fallback. */
+  agent?: ReturnType<typeof createAgent>;
   availability: AvailabilityService;
   jobs: BookingJobs;
   profiles: ProfileReaderWriter;
@@ -79,6 +82,16 @@ export function createApp(services: AppServices) {
   app.post('/api/chat', async c => {
     const input = chatInputSchema.safeParse(await c.req.json().catch(() => null));
     if (!input.success) throw new ApiError(400, 'BAD_REQUEST', 'Send messages and intent.');
+    // Real agent: the model resolves the request and searches via its check_availability tool, then writes the reply.
+    if (services.agent) {
+      try {
+        const t = await services.agent.run(input.data);
+        return c.json({ reply: t.reply, intent: t.intent, ready: t.ready, source: t.source, results: t.results, nearby: t.nearby });
+      } catch (error) {
+        log('warn', 'agent_failed_fallback', { id: c.get('requestId'), message: error instanceof Error ? error.message : String(error) });
+        // Fall through to the deterministic parser path below so a chat turn always answers.
+      }
+    }
     const turn = await chatTurn(input.data, { useCodex: services.useCodex, now: services.now?.(), run: services.model, modelSource: services.modelSource });
     if (!turn.ready || turn.intent.unsupportedLocation) return c.json({ ...turn, ready: false, results: null });
     const intent = turn.intent as SearchIntent;

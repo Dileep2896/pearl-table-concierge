@@ -16,6 +16,7 @@ import { AvailabilityService } from './availability';
 import { Canary } from './canary';
 import { CodexQueue } from './codex';
 import { createAnthropicRunner, type ModelRunner } from './ai';
+import { createAgent } from './agent';
 import { log } from './logger';
 
 const config = loadConfig();
@@ -58,17 +59,22 @@ const webDir = existsSync(indexPath) ? 'dist' : undefined;
 const indexHtml = webDir ? readFileSync(indexPath, 'utf8') : undefined;
 const availability = new AvailabilityService({ cacheMs: config.availabilityCacheMs, concurrency: config.availabilityConcurrency, timeoutMs: config.availabilityTimeoutMs });
 const canary = new Canary({ availability, intervalMs: config.canaryIntervalMs });
+// The real agent: with an Anthropic key the model itself resolves the request and calls a check_availability tool
+// over the same live data, then writes the reply. Booking stays confirm-gated. The parser is the fallback.
+const agent = modelSource === 'anthropic' && config.ai.apiKey
+  ? createAgent({ apiKey: config.ai.apiKey, model: config.ai.model, availability, maxTokens: config.ai.maxTokens })
+  : undefined;
 const app = createApp({
-  useCodex: useModel, bookingMode: config.bookingMode, model, modelSource, rateLimitPerMinute: config.rateLimitPerMinute,
+  useCodex: useModel, bookingMode: config.bookingMode, model, modelSource, agent, rateLimitPerMinute: config.rateLimitPerMinute,
   availability, canary,
   jobs, ledger, profiles, webDir, indexHtml,
   health: () => ({ browser: 'status' in contexts ? (contexts as { status: () => unknown }).status() : { remote: true }, chat: modelStatus() }),
 });
 
 const server = serve({ fetch: app.fetch, hostname: config.host, port: config.apiPort }, info => {
-  const chatVia = modelSource === 'anthropic' ? `Anthropic ${config.ai.model}` : modelSource === 'codex' ? 'Codex CLI' : 'parser';
+  const chatVia = modelSource === 'anthropic' ? `Anthropic ${config.ai.model}${agent ? ' agent' : ''}` : modelSource === 'codex' ? 'Codex CLI' : 'parser';
   console.log(`Tavola ${webDir ? 'app + API' : 'demo API'}: http://${config.host}:${info.port} · web ${webDir ? 'served from dist/' : 'via Vite dev server'} · chat via ${chatVia} · booking mode: ${config.bookingMode}${config.bookingMode === 'auto' ? (config.browserbase ? ' via Browserbase' : config.browserCdpUrl ? ' via remote browser' : ' (local browser)') : ' (in-app handoff)'}`);
-  log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: modelSource ?? 'parser', model: modelSource === 'anthropic' ? config.ai.model : undefined, persist: db ? 'postgres' : 'files', canaryEveryMs: config.canaryIntervalMs || undefined, dataDir: config.dataDir });
+  log('info', 'api_started', { port: info.port, web: Boolean(webDir), chat: modelSource ?? 'parser', agent: Boolean(agent), model: modelSource === 'anthropic' ? config.ai.model : undefined, persist: db ? 'postgres' : 'files', canaryEveryMs: config.canaryIntervalMs || undefined, dataDir: config.dataDir });
   canary.start();
 });
 

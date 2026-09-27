@@ -12,12 +12,12 @@ No paid APIs required for the local demo. Availability comes from SevenRooms' pu
 
 ## Architecture, trade-offs, and cuts
 
-**Architecture.** A React single-page app (Vite, Zustand, Framer Motion) talks to a small Hono API that does three things: understand the request (a deterministic parser first, the Anthropic API only for natural phrasing), find availability (one cached call per venue to SevenRooms' public widget), and book (a Playwright browser drives SevenRooms' guest checkout in two phases — hold the table, then submit only on the diner's confirm — tracked by an explicit job state machine). In production it runs as one Render web service that serves the built site and the API on one port, with a Browserbase cloud browser doing the booking. The seven Mermaid diagrams are in `ARCHITECTURE.md`; the long-form write-up and the cost / time / breakage / scale answers are in `DEMO.md`.
+**Architecture.** A React single-page app (Vite, Zustand, Framer Motion) talks to a small Hono API that does three things: understand the request, find availability (one cached call per venue to SevenRooms' public widget), and book (a Playwright browser drives SevenRooms' guest checkout in two phases — hold the table, then submit only on the diner's confirm — tracked by an explicit job state machine). Understanding has two layers: with an `ANTHROPIC_API_KEY` the model itself is the agent — it resolves the request and calls a `check_availability` tool over the real widget data, then writes the reply from what came back (`server/agent.ts`); a deterministic chrono-based parser is the always-on fallback and safety net. Booking stays confirm-gated in both. In production it runs as one Render web service that serves the built site and the API on one port, with a Browserbase cloud browser doing the booking. The seven Mermaid diagrams are in `ARCHITECTURE.md`; the long-form write-up and the cost / time / breakage / scale answers are in `DEMO.md`.
 
 **Trade-offs.**
 - **No paid API, no bot evasion.** Availability and booking both go through SevenRooms' public surfaces, driven like a person. If a platform blocks it, the answer is a partnership, not a workaround.
 - **reCAPTCHA stays human.** It rejects the first automated Submit every time, so a person does the one tick — and adds any card — inside an embedded live view of the cloud browser. The agent never types a card number or a password.
-- **Parser first, model optional.** Cheaper and more robust than sending every turn to a model; the model only improves phrasing, and a bad reply can't break a turn.
+- **Model-driven, parser-backed.** With a key the model is the agent — it drives understand→search via a `check_availability` tool and can't invent restaurants or times because the tool returns the real ones; a deterministic parser answers every turn if the model is off or errors, so a bad reply can never break a turn. Understanding accuracy is measured by a labelled eval (`npm run eval`), gated in CI.
 - **Confirm before submit.** Only the diner's click books, so it is slower than a fully-automatic path but never books the wrong thing.
 
 **What I cut.** OpenTable (bot wall) and Apify (paid per booking); restaurant search (a curated 21-venue list of NY + SF restaurants instead); multi-user and accounts; in-app cancel and modify. V2 would add an hourly canary per venue to catch widget changes, direct hold calls for hot 10:00:00 releases, a second platform (Resy) through the same adapter boundary, and a tokenized card so card-required venues can be booked end to end.
@@ -41,7 +41,7 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | Variable | Default | Meaning |
 |---|---|---|
 | `TAVOLA_DEMO_AI` | on | `off` uses the deterministic parser only (no model) |
-| `ANTHROPIC_API_KEY` | unset | Runs chat understanding through the Anthropic API, so the agent works on a deployed server with no local login. When set, it is preferred over the Codex CLI |
+| `ANTHROPIC_API_KEY` | unset | Turns on the model-driven agent (`server/agent.ts`): the model resolves each request and calls a `check_availability` tool over the real data, then writes the reply. Works on a deployed server with no local login, and is preferred over the Codex CLI. Without it, the deterministic parser handles chat |
 | `TAVOLA_AI_MODEL` | claude-sonnet-5 | Which model acts as the agent. `claude-haiku-4-5` is cheapest, `claude-opus-5` most capable |
 | `TAVOLA_DEMO_API_PORT` / `TAVOLA_DEMO_WEB_PORT` | 8788 / 5180 | Ports |
 | `TAVOLA_DATA_DIR` | `.local` | Profile and bookings ledger, when stored as JSON files |
@@ -72,6 +72,14 @@ npm test
 ```
 
 The booking driver test runs Chromium against a local stand-in for the widget, so it never touches SevenRooms.
+
+## Evals
+
+```bash
+npm run eval             # labelled understanding eval, deterministic and free
+```
+
+A labelled set (`evals/dataset.ts`) of natural-language messages → the intent Tavola should extract, graded against the deterministic parser (`evals/grade.ts`), so it costs nothing and runs in CI (`tests/evals.test.ts` gates the score and guards the core cases from regressing). The report scores per intent field and per category, and it includes known-hard colloquial phrasings ("a table for a couple", "half past seven") the parser misses — where the model agent earns its place — so the number is a true signal, not a curated 100%. Set `EVAL_THRESHOLD` to change the CI floor.
 
 ## Docs
 

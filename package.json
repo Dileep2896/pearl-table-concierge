@@ -15,6 +15,7 @@
     "build": "vite build",
     "start": "node --env-file-if-exists=.env --import tsx server/main.ts",
     "test": "vitest run",
+    "eval": "node --import tsx evals/run.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/postinstall.mjs"
   },
