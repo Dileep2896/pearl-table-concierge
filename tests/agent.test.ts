@@ -55,4 +55,19 @@ describe('agent', () => {
     expect(result.results).toBeNull();
     expect(result.reply).toMatch(/New York|San Francisco/);
   });
+
+  it('drops the leading assistant turn so the model gets a user-first conversation (the client seeds a welcome)', async () => {
+    const create = vi.fn(async (_params: unknown) => text('Which neighborhood should I check?'));
+    const agent = createAgent({ apiKey: 'test', model: 'x', availability: bookable, now: () => now, create });
+    await agent.run({ messages: [
+      { role: 'assistant', text: 'Good evening. Tell me where, when and for how many.' },
+      { role: 'user', text: 'a table for two' },
+      { role: 'assistant', text: 'Which neighborhood?' },
+      { role: 'user', text: 'west village friday at 7' },
+    ], intent: {} });
+    // The Anthropic API rejects a conversation that does not start with role 'user'.
+    const params = create.mock.calls[0][0] as { messages: { role: string }[] };
+    expect(params.messages[0].role).toBe('user');
+    expect(params.messages.map(m => m.role)).toEqual(['user', 'assistant', 'user']);
+  });
 });

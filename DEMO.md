@@ -106,7 +106,7 @@ Measured today on a laptop:
 | Rate limiting or IP block | 4xx/5xx from the endpoint | Venues show "could not check"; bookings fail at open |
 | Restaurant leaves SevenRooms | Slug returns 400 | Venue shows "could not check" until removed |
 
-Every failure is a named code at a named step, logged as a structured JSON event with a request id, and nothing is ever submitted on a failure path. `GET /api/health` reports the browser pool, the Codex queue and job counts, so readiness can be checked before a demo. Availability failures are not cached, so a blip clears on the next turn.
+Every failure is a named code at a named step, logged as a structured JSON event with a request id, and nothing is ever submitted on a failure path. `GET /api/health` reports the browser pool, the chat backend and job counts (and the canary summary when it runs), so readiness can be checked before a demo. Availability failures are not cached, so a blip clears on the next turn.
 
 **How we'd know before a diner does.** Today: only from those logs. V2, and cheap: a canary that runs every hour per venue: fetch availability, open the checkout in dry-run mode, verify the four inputs and the Submit button exist, release the hold. It costs a hold nobody wanted for a few seconds and would catch selector drift, captcha changes and blocks within an hour. Pair it with a version fingerprint of the widget's JS bundle so a redeploy raises a flag even before the canary fails.
 
@@ -162,7 +162,7 @@ Seven Mermaid diagrams (system overview with the service layout, booking sequenc
 ```bash
 npm run demo                     # API on 127.0.0.1:8788, web on localhost:5180
 TAVOLA_DEMO_AI=off npm run demo   # deterministic parser only, no model
-npm test                # 56 tests: parser, availability cache and limiter, chat + Anthropic provider, ledger, driver against a local widget stand-in (incl. the card live-view finish), API state machine
+npm test                # 69 tests: parser, availability cache and limiter, chat + Anthropic provider, the model agent, ledger, canary, understanding eval, driver against a local widget stand-in (incl. the card live-view finish), API state machine
 ```
 
 To deploy, put an `ANTHROPIC_API_KEY` (the chat agent) and a `BROWSERBASE_API_KEY` (the cloud browser) in `.env`; the parser and a local browser remain the no-key fallback.

@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { api, ApiError, type BookingJob, type Contact, type Intent, type Message, type VenueAvailability, type Slot, type Venue, type LedgerEntry } from '../lib/api';
-import { emptyContact, profileComplete, sevenRoomsUrl } from '../lib/format';
+import { emptyContact, profileComplete, sevenRoomsUrl, timeLabel } from '../lib/format';
 
 type Theme = 'dark' | 'light';
 export type Page = 'concierge' | 'reservations' | 'settings';
-type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; nearby: VenueAvailability[] | null; thinking: boolean; source: 'anthropic' | 'codex' | 'parser' | null };
+type Chat = { messages: Message[]; intent: Intent; results: VenueAvailability[] | null; nearby: VenueAvailability[] | null; thinking: boolean; source: 'agent' | 'anthropic' | 'codex' | 'parser' | null };
 const busy = (s: BookingJob['state']) => s === 'PREPARING' || s === 'READY' || s === 'SUBMITTING';
 // In-flight guard: a hold takes ~1-2s to place, during which the results are still tappable. Without this,
 // a rapid second slot tap would start a second server hold before the first job is set.
@@ -62,8 +62,8 @@ function initialTheme(): Theme {
 export const useStore = create<Store>((set, get) => ({
   theme: initialTheme(),
   page: 'concierge', setPage: p => set({ page: p }),
-  bookingMode: 'auto',
-  async loadMode() { try { const h = await api.health(); set({ bookingMode: h.bookingMode }); } catch { /* stay auto */ } },
+  bookingMode: 'handoff',
+  async loadMode() { try { const h = await api.health(); set({ bookingMode: h.bookingMode }); } catch { /* keep the safe handoff default */ } },
   toggleTheme: () => set(s => { const theme = s.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('tavola-theme', theme); } catch { /* ignore */ } document.documentElement.dataset.theme = theme; return { theme }; }),
 
   chat: { messages: [welcome], intent: {}, results: null, nearby: null, thinking: false, source: null },
@@ -110,8 +110,11 @@ export const useStore = create<Store>((set, get) => ({
   },
   async confirmHandoff(reference) {
     const h = get().handoff; if (!h) return; const u = new URL(h.url); const date = u.searchParams.get('date')!; const partySize = Number(u.searchParams.get('party_size'));
-    try { await api.addBooking({ venue: h.venue.slug, date, time: h.slot.time, partySize, reference }); await get().loadBookings(); } catch { /* ignore */ }
-    set(s => ({ handoff: null, chat: { ...s.chat, messages: [...s.chat.messages, { id: `h-${Date.now()}`, role: 'assistant', text: `Saved: ${h.venue.name} at ${h.slot.label}. Enjoy your evening.` }] } }));
+    let saved = true;
+    try { await api.addBooking({ venue: h.venue.slug, date, time: h.slot.time, partySize, reference }); await get().loadBookings(); } catch { saved = false; }
+    // Don't claim it was saved if the ledger write failed — tell the diner they're set at the restaurant either way.
+    const text = saved ? `Saved: ${h.venue.name} at ${h.slot.label}. Enjoy your evening.` : `You're set at ${h.venue.name} at ${h.slot.label}. I couldn't add it to your reservations here — you can add it later from Reservations.`;
+    set(s => ({ handoff: null, chat: { ...s.chat, messages: [...s.chat.messages, { id: `h-${Date.now()}`, role: 'assistant', text }] } }));
   },
   dismissHandoff() { set({ handoff: null }); },
 
@@ -143,7 +146,7 @@ export const useStore = create<Store>((set, get) => ({
     set({ job: null });
   },
   dismissJob() { const s = get(); const confirmed = s.job?.state === 'CONFIRMED'; s._stopPolling(); set(st => ({ job: null, chat: confirmed ? { ...st.chat, results: null } : st.chat })); },
-  retryJob() { const job = get().job; if (!job) return; const r = job.request; get()._stopPolling(); set({ job: null }); void get().prepare(r.venue, { venue: r.venue.slug, time: r.time, label: r.time, timeIso: `${r.date} ${r.time}:00`, area: '', type: 'book' }); },
+  retryJob() { const job = get().job; if (!job) return; const r = job.request; get()._stopPolling(); set({ job: null }); void get().prepare(r.venue, { venue: r.venue.slug, time: r.time, label: timeLabel(r.time), timeIso: `${r.date} ${r.time}:00`, area: '', type: 'book' }); },
 
   _stopPolling() { const t = get().poll.timer; if (t) clearTimeout(t); set({ poll: { misses: 0 } }); },
   _startPolling() {

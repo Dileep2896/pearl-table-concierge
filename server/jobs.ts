@@ -99,7 +99,8 @@ export class BookingJobs {
       if (note?.startsWith('verification passed') && job.verification) job.verification.passedAt = at;
     }, liveViewUrl => { const vAt = this.now().toISOString(); job.verification = { requestedAt: job.verification?.requestedAt ?? vAt, expiresAt: job.verification?.expiresAt ?? new Date(this.now().getTime() + Math.max(this.options.humanSolveMs ?? 0, 180_000)).toISOString(), liveViewUrl, passedAt: job.verification?.passedAt }; job.updatedAt = vAt; }, liveViewUrl => { if (liveViewUrl) { job.liveViewUrl = liveViewUrl; job.updatedAt = this.now().toISOString(); } }), timers: [] };
     this.entries.set(id, entry);
-    entry.timers.push(setTimeout(() => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'TIMEOUT', message: 'The booking browser did not finish preparing within 2 minutes. Nothing was submitted.' }); }, this.options.prepareTimeoutMs ?? 120_000));
+    const prepareTimer = setTimeout(() => { void this.finish(entry, 'FAILED', { status: 'FAILED', code: 'TIMEOUT', message: 'The booking browser did not finish preparing within 2 minutes. Nothing was submitted.' }); }, this.options.prepareTimeoutMs ?? 120_000);
+    prepareTimer.unref?.(); entry.timers.push(prepareTimer);
     void entry.booker.prepare({ ...request, timezone: venue.timezone }).then(prepared => {
       if (job.state !== 'PREPARING') return;
       if (prepared.status !== 'READY') { void this.finish(entry, 'FAILED', { status: 'FAILED', code: prepared.code, message: prepared.message, policy: prepared.policy, pageUrl: prepared.pageUrl }); return; }

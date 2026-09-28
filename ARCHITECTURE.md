@@ -11,8 +11,9 @@ flowchart LR
   D([Diner]) --> UI[React app · Vite<br/>sidebar shell: Concierge · Reservations · Settings]
   UI --- ST[Zustand store<br/>chat · booking job · profile · theme]
   ST -->|/api| API[Hono API<br/>routing · errors · request log]
-  API --> CH[Chat<br/>parser first, model when available]
+  API --> CH[Chat<br/>model agent tool-use · parser fallback]
   CH --> AI{Model backend}
+  AN -.->|check_availability tool| AV
   AI -->|API key, deployable| AN[(Anthropic API<br/>claude-sonnet-5)]
   AI -->|local login| CX[(Codex CLI<br/>no API key)]
   API --> AV[Availability service<br/>20 s cache · concurrency cap · nearby fallback]
@@ -24,8 +25,8 @@ flowchart LR
   BR -->|deployed| BB[(Browserbase<br/>cloud browser + live view)]
   BP -->|guest checkout + reCAPTCHA| SR
   BB -->|guest checkout + reCAPTCHA| SR
-  JB --> LG[(Bookings ledger<br/>.local/bookings.json)]
-  API --> PF[(Local profile<br/>.local/profile.json)]
+  JB --> LG[(Bookings ledger<br/>Postgres or .local/bookings.json)]
+  API --> PF[(Diner profile<br/>Postgres or .local/profile.json)]
   API --> VN[(Curated venues<br/>21 slugs, NY + SF)]
 ```
 
@@ -87,19 +88,25 @@ stateDiagram-v2
 
 ## 4. Understanding a message
 
+With an Anthropic key the model is the agent: it resolves the request and calls a `check_availability` tool over the real widget data, then writes the reply from what came back (`server/agent.ts`). The deterministic parser is the always-on fallback — used when no key is set and if the agent errors on a turn.
+
 ```mermaid
-flowchart LR
-  M[Diner message<br/>or tapped quick reply] --> P[Parser<br/>chrono-node · patterns · aliases]
-  P --> C{Model on?}
-  C -->|yes| X[Model<br/>Anthropic API or Codex · strict JSON] --> MG[Merge over parser<br/>validate with Zod]
-  C -->|no| V
-  MG --> V{All fields known?<br/>area · date · window · party}
-  MG -.->|model fails or junk| V
+flowchart TB
+  M[Diner message<br/>or tapped quick reply] --> K{Anthropic key set?}
+  K -->|yes · agent| AG[Model agent<br/>server/agent.ts]
+  AG --> T[check_availability tool<br/>resolve area · date · window · party]
+  T --> AV[(Availability fan-out<br/>real SevenRooms slots)]
+  AV --> AG
+  AG -->|composes reply from real results| S[Reply + open times<br/>closest pick per venue]
+  AG -.->|missing a detail| Q2[Ask one friendly question]
+  AG -.->|off or errors this turn| P
+  K -->|no · fallback| P[Deterministic parser<br/>chrono-node · patterns · aliases]
+  P --> V{All fields known?<br/>area · date · window · party}
   V -->|missing| Q[Ask + show quick-reply chips<br/>area · day · time · guests]
   V -->|unsupported place| R[Refuse with the covered areas]
   V -->|ready| F[Availability fan-out]
   F --> B{Bookable tables?}
-  B -->|yes| S[Show open times<br/>closest pick per venue]
+  B -->|yes| S
   B -->|no| N[Search the rest of the city<br/>name nearby bookable places]
 ```
 

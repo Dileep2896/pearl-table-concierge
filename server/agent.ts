@@ -45,7 +45,12 @@ export function createAgent(options: { apiKey: string; model: string; availabili
     // Baseline intent from the parser, so the intent chips still fill even if the model only asks a question.
     const baseline = parseIntent(lastUser, input.intent, now);
 
-    const messages: Anthropic.Messages.MessageParam[] = input.messages.slice(-12).map(m => ({ role: m.role, content: m.text }));
+    // The Anthropic API requires the first message to be role 'user'. The web client seeds a welcome assistant
+    // message, and a sliced window can also begin mid-turn on an assistant reply, so drop any leading assistant turns.
+    const history = input.messages.slice(-12);
+    const firstUser = history.findIndex(m => m.role === 'user');
+    const messages: Anthropic.Messages.MessageParam[] = (firstUser < 0 ? [] : history.slice(firstUser)).map(m => ({ role: m.role, content: m.text }));
+    if (!messages.length) return { reply: 'What area, date, time and party size should I check?', intent: baseline, ready: false, source: 'agent', results: null, nearby: null };
     let captured: { intent: Intent; results: VenueAvailability[]; nearby: VenueAvailability[] } | undefined;
 
     for (let step = 0; step < 3; step++) {
@@ -56,16 +61,21 @@ export function createAgent(options: { apiKey: string; model: string; availabili
         tools: [{ name: 'check_availability', description: 'Find real open tables at covered restaurants for a resolved request.', input_schema: toolSchema }],
         messages,
       });
-      const toolUse = response.content.find((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use');
-      if (response.stop_reason !== 'tool_use' || !toolUse) {
+      const toolUses = response.content.filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use');
+      if (response.stop_reason !== 'tool_use' || toolUses.length === 0) {
         const reply = response.content.filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text').map(b => b.text).join(' ').trim();
         if (captured) return { reply: reply || summarize(captured.results, captured.intent, captured.nearby), intent: captured.intent, ready: true, source: 'agent', results: captured.results, nearby: captured.nearby.length ? captured.nearby : null };
         return { reply: reply || 'What area, date, time and party size should I check?', intent: baseline, ready: false, source: 'agent', results: null, nearby: null };
       }
-      const { output, capture } = await runSearchTool(toolUse.input, options.availability, now);
-      if (capture) captured = capture;
+      // Answer every tool_use block in the turn (Anthropic rejects a follow-up that is missing any tool_result).
       messages.push({ role: 'assistant', content: response.content });
-      messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(output) }] });
+      const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
+      for (const toolUse of toolUses) {
+        const { output, capture } = await runSearchTool(toolUse.input, options.availability, now);
+        if (capture) captured = capture;
+        toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(output) });
+      }
+      messages.push({ role: 'user', content: toolResults });
     }
     // The model kept calling the tool; answer from the last capture rather than looping forever.
     if (captured) return { reply: summarize(captured.results, captured.intent, captured.nearby), intent: captured.intent, ready: true, source: 'agent', results: captured.results, nearby: captured.nearby.length ? captured.nearby : null };

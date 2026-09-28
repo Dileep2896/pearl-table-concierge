@@ -26,7 +26,8 @@ export function extractReference(source: unknown, pageText = ''): string | undef
   const walk = (value: unknown, depth = 0) => {
     if (!value || typeof value !== 'object' || depth > 6) return;
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (/reference|confirmation|conf_code|confcode/i.test(key) && typeof entry === 'string' && entry.length >= 3) found.push(entry);
+      // Require a compact code (letters/digits/-/_), so a prose value like a policy sentence is not mistaken for a reference.
+      if (/reference|confirmation|conf_code|confcode/i.test(key) && typeof entry === 'string' && /^[A-Za-z0-9][\w-]{2,}$/.test(entry.trim())) found.push(entry.trim());
       walk(entry, depth + 1);
     }
   };
@@ -278,8 +279,13 @@ export class SevenRoomsBooker {
     const end = Date.now() + timeoutMs; let pressed = false;
     session.bookStatus = undefined; session.bookResponse = undefined;
     while (Date.now() < end) {
-      // The person ticked the checkbox and Tavola resubmitted, so a captured non-rejected book response is the booking.
-      if (session.bookStatus !== undefined) return this.bookRejected(session) ? 'error' : 'confirmed';
+      // The person ticked the checkbox and Tavola resubmitted. Confirm only on a real reference, exactly as
+      // awaitOutcome does: a 2xx with no reference is an interim reCAPTCHA step, so clear it and keep waiting.
+      if (session.bookStatus !== undefined && session.bookResponse !== undefined) {
+        if (this.bookRejected(session)) return 'error';
+        if (this.bookingConfirmed(session, page)) return 'confirmed';
+        session.bookStatus = undefined; session.bookResponse = undefined;
+      }
       if (!pressed) {
         const token = await page.evaluate(() => { try { return (window as any).grecaptcha?.enterprise?.getResponse() || ''; } catch { return ''; } }).catch(() => '');
         if (token) { pressed = true; log('info', 'booking_captcha_solved'); this.step('SUBMITTING', 'verification passed, submitting'); await submit.click().catch(() => {}); }

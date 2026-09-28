@@ -5,8 +5,11 @@ import { ApiError } from './errors';
  * A tiny in-memory fixed-window rate limiter, keyed by client IP. Enough to blunt abuse of the public API on one
  * server; it is not shared across instances, so a horizontally-scaled deploy would move this to a shared store.
  */
-export function rateLimit(options: { perMinute: number; now?: () => number }): MiddlewareHandler {
+export function rateLimit(options: { perMinute: number; now?: () => number; maxKeys?: number }): MiddlewareHandler {
   const windowMs = 60_000;
+  // Hard cap on tracked IPs. The X-Forwarded-For key is client-supplied, so a flood of spoofed IPs could otherwise
+  // grow this Map without bound within one window (an expired-only sweep never fires when nothing has expired yet).
+  const maxKeys = options.maxKeys ?? 20_000;
   const hits = new Map<string, { count: number; resetAt: number }>();
   const now = () => options.now?.() ?? Date.now();
   return async (c, next) => {
@@ -16,7 +19,11 @@ export function rateLimit(options: { perMinute: number; now?: () => number }): M
     let entry = hits.get(ip);
     if (!entry || entry.resetAt <= t) { entry = { count: 0, resetAt: t + windowMs }; hits.set(ip, entry); }
     entry.count += 1;
-    if (hits.size > 5000) for (const [k, v] of hits) if (v.resetAt <= t) hits.delete(k); // opportunistic sweep
+    if (hits.size > maxKeys) {
+      for (const [k, v] of hits) if (v.resetAt <= t) hits.delete(k); // drop expired first
+      // Still over cap (a burst of unexpired unique IPs): evict oldest-inserted until bounded, keeping memory flat.
+      if (hits.size > maxKeys) { let drop = hits.size - maxKeys; for (const k of hits.keys()) { if (drop-- <= 0) break; hits.delete(k); } }
+    }
     if (entry.count > options.perMinute) {
       const retry = Math.max(1, Math.ceil((entry.resetAt - t) / 1000));
       c.header('Retry-After', String(retry));

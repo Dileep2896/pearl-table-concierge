@@ -63,7 +63,7 @@ Everything is an environment variable with a safe default (see `server/config.ts
 | `TAVOLA_CANARY_INTERVAL_MS` | 0 | How often the canary sweeps every venue's availability (`0` off; e.g. `3600000` for hourly). Status at `GET /api/canary`, trigger with `POST /api/canary/run` |
 | `TAVOLA_LOG_LEVEL` | info | `debug`, `info`, `warn`, `error` |
 
-`GET /api/health` reports the chat provider, the browser pool and job counts. `GET /api/bookings` lists confirmed reservations from the local ledger.
+`GET /api/health` reports the chat provider, the browser pool and job counts. `GET /api/bookings` lists confirmed reservations from the ledger (Postgres when `DATABASE_URL` is set, else a local JSON file).
 
 ## Test
 

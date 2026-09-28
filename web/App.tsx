@@ -29,7 +29,7 @@ export function App() {
         </motion.div>
       </AnimatePresence>
     </main>
-    <AnimatePresence>{error && <motion.div className="toast bad" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} onClick={() => useStore.getState().setError(null)}>{error}</motion.div>}</AnimatePresence>
+    <AnimatePresence>{error && <motion.button type="button" className="toast bad" role="alert" aria-live="assertive" aria-label={`${error} (dismiss)`} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} onClick={() => useStore.getState().setError(null)}>{error}</motion.button>}</AnimatePresence>
     <JobCard />
     <HandoffCard />
   </div></MotionConfig>;

@@ -19,8 +19,11 @@ export class BookingLedger implements LedgerStore {
   private writing: Promise<void> = Promise.resolve();
   constructor(private path: string) {}
   async list(): Promise<LedgerEntry[]> {
-    try { return z.array(ledgerEntrySchema).parse(JSON.parse(await readFile(this.path, 'utf8'))); }
+    let raw: unknown;
+    try { raw = JSON.parse(await readFile(this.path, 'utf8')); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
+    // Skip any malformed/legacy row rather than 500-ing the whole list.
+    return Array.isArray(raw) ? raw.flatMap(e => { const p = ledgerEntrySchema.safeParse(e); return p.success ? [p.data] : []; }) : [];
   }
   /** Appends atomically with respect to other appends in this process. */
   append(entry: LedgerEntry): Promise<void> {

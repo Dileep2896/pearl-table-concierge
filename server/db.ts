@@ -12,8 +12,12 @@ export class Database implements LedgerStore, ProfileReaderWriter {
   private pool: pg.Pool;
   private ready: Promise<void>;
   constructor(connectionString: string, private profileKey = 'default') {
-    // Hosted Postgres (Render, Neon, …) requires TLS; local Postgres usually does not.
-    const ssl = /\bsslmode=require\b/.test(connectionString) || /\.(render\.com|neon\.tech)\b/.test(connectionString) ? { rejectUnauthorized: false } : undefined;
+    // Hosted Postgres (Render, Neon, Supabase, RDS, Heroku, …) needs TLS; local usually does not. Honor an explicit
+    // sslmode, otherwise default TLS on for any non-local host. Set sslmode=disable in DATABASE_URL for a local server.
+    const local = /@(?:localhost|127\.0\.0\.1|\[::1\]|host\.docker\.internal)[:/]/.test(connectionString) || /\bhost=(?:localhost|127\.0\.0\.1|\/)/.test(connectionString);
+    const ssl = /\bsslmode=disable\b/.test(connectionString) ? undefined
+      : (/\bsslmode=require\b/.test(connectionString) || !local) ? { rejectUnauthorized: false }
+      : undefined;
     this.pool = new pg.Pool({ connectionString, max: 4, ...(ssl ? { ssl } : {}) });
     this.pool.on('error', err => log('error', 'db_pool_error', { message: err.message }));
     this.ready = this.migrate();
@@ -30,7 +34,8 @@ export class Database implements LedgerStore, ProfileReaderWriter {
   async list(): Promise<LedgerEntry[]> {
     await this.ready;
     const { rows } = await this.pool.query('SELECT data FROM bookings ORDER BY confirmed_at DESC LIMIT 500');
-    return rows.map(r => ledgerEntrySchema.parse(r.data));
+    // Skip any malformed/legacy row rather than 500-ing the whole list.
+    return rows.flatMap(r => { const p = ledgerEntrySchema.safeParse(r.data); return p.success ? [p.data] : []; });
   }
   async append(entry: LedgerEntry): Promise<void> {
     await this.ready;

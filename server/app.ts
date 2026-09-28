@@ -129,7 +129,10 @@ export function createApp(services: AppServices) {
     const prepared = job.prepared ? { ...job.prepared, values: undefined } : undefined;
     const d = job.result?.diagnostics;
     const result = job.result ? { ...job.result, diagnostics: d ? { ...d, pageText: '', requests: d.requests.map(({ body, ...r }) => r) } : undefined } : undefined;
-    return { ...job, prepared, result, request: { venue: request.venue.slug, date: request.date, time: request.time, partySize: request.partySize } };
+    // Never expose the interactive live-view URL here: this list is unauthenticated, and that URL is a controllable
+    // view of the diner's cloud browser mid-checkout. The diner's own capability-scoped GET /api/book/:id keeps it.
+    const verification = job.verification ? { ...job.verification, liveViewUrl: undefined } : undefined;
+    return { ...job, liveViewUrl: undefined, verification, prepared, result, request: { venue: request.venue.slug, date: request.date, time: request.time, partySize: request.partySize } };
   }) }));
   // Registered last, so it only handles what the API routes above did not: the built web (assets, index.html).
   if (services.webDir) app.use('/*', serveStatic({ root: services.webDir }));

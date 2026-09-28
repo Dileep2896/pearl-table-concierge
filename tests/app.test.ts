@@ -146,6 +146,28 @@ describe('booking API', () => {
       expect(jobs[0].request.contact).toBeUndefined();
     } finally { await h.cleanup(); }
   });
+
+  it('never exposes the interactive live-view URL on the unauthenticated /api/jobs feed', async () => {
+    const secret = 'https://live.browserbase.example/secret-session';
+    // A booker that surfaces a live-view URL (as Browserbase does), so the job carries it.
+    const factory: JobsOptions['booker'] = (_onStep, onVerification, onLiveView) => {
+      const b = fakeBooker({});
+      b.prepare = async () => { onLiveView(secret); onVerification(secret); (b as { ready: boolean }).ready = true; return { status: 'READY', code: 'READY', message: 'ok', policy: 'Please cancel 2 hours ahead.', values: { firstName: 'Test' }, holdSeconds: 300 } as PrepareResult; };
+      return b;
+    };
+    const h = await harness(factory);
+    try {
+      const { job } = await (await post(h.app, '/api/book', body)).json() as { job: { id: string } };
+      await wait(30);
+      // The diner's own capability-scoped endpoint keeps the live view — the in-app iframe needs it.
+      const single = await (await h.app.request(`/api/book/${job.id}`)).json() as { job: { liveViewUrl?: string } };
+      expect(single.job.liveViewUrl).toBe(secret);
+      // The unauthenticated list must not leak it (top-level or nested in verification).
+      const { jobs } = await (await h.app.request('/api/jobs')).json() as { jobs: { liveViewUrl?: string; verification?: { liveViewUrl?: string } }[] };
+      expect(jobs[0].liveViewUrl).toBeUndefined();
+      expect(jobs[0].verification?.liveViewUrl).toBeUndefined();
+    } finally { await h.cleanup(); }
+  });
 });
 
 describe('exact-time picks', () => {
